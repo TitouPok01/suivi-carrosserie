@@ -17,6 +17,7 @@ const IC={
   check:P('<path d="M5 12l5 5 9-10"/>'),
   gear:P('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'),
   send:P('<path d="M4 12l16-8-6 16-3-7z"/>'),
+  bell:P('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
   car:P('<path d="M5 16l1.5-5h11L19 16"/><path d="M3 16h18v3H3z"/><circle cx="7" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>')};
 const STAGES=[
   {k:'pcl',l:'Entrée au PCL',c:'--s1'},{k:'reparation',l:'Réparation',c:'--s2'},{k:'finition',l:'Finition',c:'--s3'},
@@ -196,6 +197,7 @@ function renderTop(){
   const sf=S.config.staff;
   $('#top-r').innerHTML=`${sf.length?`<label class="who">Je suis<select id="me-sel"><option value="">Choisir</option>${sf.map(p=>`<option value="${esc(p.name)}" ${p.name===S.me?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}
     ${installEvt?`<button class="btn" data-act="install">Installer l'appli</button>`:''}
+    ${S.push==='off'?`<button class="btn" data-act="push-on">${IC.bell}Notifications</button>`:''}
     <button class="btn icon-only" data-act="settings" aria-label="Réglages" title="Réglages">${IC.gear}</button>
     ${W()?`<button class="btn go" data-act="add">${IC.plus}Nouvelle voiture</button>`:''}`;
 }
@@ -336,7 +338,10 @@ function settingsForm(){
   ${w?`<button class="btn go" data-act="savecfg">Enregistrer</button>`:''}
   ${w&&hasEx?`<button class="btn red sm" data-act="clearex" style="align-self:flex-start">Supprimer les exemples</button>`:''}
   <p class="lbl" style="margin-top:12px">Cette tablette</p>
-  <div style="display:flex;flex-wrap:wrap;gap:10px"><button class="btn sm" data-act="install">Installer l'appli</button><button class="btn sm" data-act="logout">Se déconnecter</button></div></div>`;
+  <div style="display:flex;flex-wrap:wrap;gap:10px"><button class="btn sm" data-act="install">Installer l'appli</button>
+  ${S.push==='on'?`<button class="btn sm" data-act="push-off">${IC.bell}Couper les notifications</button>`:S.push==='off'?`<button class="btn sm" data-act="push-on">${IC.bell}Activer les notifications</button>`:''}
+  <button class="btn sm" data-act="logout">Se déconnecter</button></div>
+  <p class="muted" style="margin:0;font-size:13px">${S.push==='on'?`Notifications activées pour ${esc(S.me||'cette tablette')} (${esc((ROLES[myRole()]||'').toLowerCase())}).`:S.push==='denied'?'Notifications bloquées : autorisez-les dans les réglages de Chrome pour ce site.':S.push==='unsupported'?"Notifications non disponibles sur cet appareil (sur iPhone : ajoutez d'abord l'appli à l'écran d'accueil).":"Notifications désactivées sur cet appareil."}</p></div>`;
 }
 function renderLb(){const r=$('#lb-root');const p=S.lb&&S.photos.find(x=>x.id===S.lb);if(!p){r.innerHTML='';return}
   r.innerHTML=`<div class="lightbox" data-act="lbclose"><img src="${photoUrl(p.asset)}" alt="Photo"><div class="cap"><span>${esc(st(OLD[p.stage]||p.stage||'pcl').l)}${p.by?' · '+esc(p.by):''} · ${fmtTime(p.t||0)}</span>
@@ -370,6 +375,8 @@ document.addEventListener('click',async e=>{
     case 'settings':S.sheet={mode:'settings',draft:structuredClone(S.config)};render();break;
     case 'examples':await loadExamples();break;
     case 'install':await installApp();break;
+    case 'push-on':await enablePush();break;
+    case 'push-off':await disablePush();break;
     case 'logout':await logout();break;
     case 'clearex':await clearExamples();break;
     case 'askdel':S.confirmDel=true;renderSheet();break;
@@ -390,7 +397,7 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('change',async e=>{
   const t=e.target;
-  if(t.id==='me-sel'){S.me=t.value;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();return}
+  if(t.id==='me-sel'){S.me=t.value;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();refreshPush();return}
   if(t.dataset.upload){const files=[...t.files];t.value='';if(files.length)await uploadPhotos(t.dataset.upload,files);return}
   const id=S.sheet&&S.sheet.mode==='detail'&&S.sheet.id;if(!id)return;const v=byId(id);
   if(t.id==='d-due'){await patch(id,{due:t.value},t.value?`Finie pour le ${fmtDate(t.value)}`:'Date retirée')}
@@ -442,6 +449,30 @@ function subscribe(){
     const t=pl.table;if(pl.eventType==='DELETE'){if(pl.old&&pl.old.id)applyLocal(t,pl.old.id,null,true)}else if(pl.new&&pl.new.id)applyLocal(t,pl.new.id,pl.new.data||{});live();
   }).subscribe(st=>{if(st==='SUBSCRIBED')loadAll().catch(()=>{})});
 }
+/* ---------- notifications ---------- */
+S.push='unsupported';
+const pushOK=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window&&!!CFG.vapidPublicKey;
+function b64u(str){const pad='='.repeat((4-str.length%4)%4);const raw=atob((str+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
+async function currentSub(){const r=await navigator.serviceWorker.ready;return r.pushManager.getSubscription()}
+async function saveSub(sub){const j=sub.toJSON();const {error}=await sb.from('push_subs').upsert({endpoint:j.endpoint,sub:j,name:S.me||'',role:myRole(),updated_at:now()});if(error)toast("Notifications : pas enregistrées. Réessayez.")}
+async function refreshPush(){
+  if(!pushOK()){S.push='unsupported';renderTop();return}
+  try{if(Notification.permission==='denied'){S.push='denied'}else{const sub=await currentSub();S.push=sub?'on':'off';if(sub&&S.ready)await saveSub(sub)}}catch(e){S.push='unsupported'}
+  renderTop();if(S.sheet&&S.sheet.mode==='settings')renderSheet();
+}
+async function enablePush(){
+  if(!pushOK()){toast("Notifications impossibles ici. Sur iPhone : ajoutez d'abord l'appli à l'écran d'accueil.");return}
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted'){S.push=perm==='denied'?'denied':'off';renderTop();toast('Notifications refusées. Autorisez-les dans les réglages de Chrome pour ce site.');return}
+  try{let sub=await currentSub();if(!sub)sub=await (await navigator.serviceWorker.ready).pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(CFG.vapidPublicKey)});
+    await saveSub(sub);S.push='on';renderTop();if(S.sheet&&S.sheet.mode==='settings')renderSheet();toast('Notifications activées')}
+  catch(e){toast("Activation impossible. Vérifiez internet et réessayez.")}
+}
+async function disablePush(){try{const sub=await currentSub();if(sub){await sb.from('push_subs').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}}catch(e){}
+  S.push='off';renderTop();if(S.sheet&&S.sheet.mode==='settings')renderSheet();toast('Notifications désactivées')}
+function openFromLink(url){const m=String(url||location.hash).match(/#v=([0-9a-f-]{36})/);if(m&&byId(m[1])){S.sheet={mode:'detail',id:m[1],tab:unread(m[1])?'msg':openTasks(m[1]).length?'urg':'infos'};render();history.replaceState(null,'',location.pathname)}}
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.open)openFromLink(e.data.open)});
+
 /* login (one shared workshop account) */
 function showLogin(msg){
   $('#login-root').innerHTML=`<div class="login"><form class="login-card" id="login-form">
@@ -466,6 +497,8 @@ async function start(){
   $('#login-root').innerHTML='';
   try{await loadAll()}catch(e){S.offline=true;render()}
   subscribe();
+  openFromLink();
+  refreshPush();
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.ready!==undefined)sb.auth.getSession().then(({data})=>{if(data.session)loadAll().catch(()=>{S.offline=true;render()})})});
 window.addEventListener('online',()=>{S.offline=false;loadAll().catch(()=>{});render()});
