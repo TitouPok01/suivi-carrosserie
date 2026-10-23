@@ -2,6 +2,6 @@
 // Ces deux valeurs peuvent être publiques : la sécurité est assurée par la connexion
 // (identifiant de l'atelier) et par les règles de la base (voir supabase/schema.sql).
 window.APP_CONFIG = {
-  supabaseUrl: "https://VOTRE-PROJET.supabase.co",
-  supabaseKey: "VOTRE-CLE-PUBLISHABLE"
+  supabaseUrl: "https://lhbufaoiumslovbdxesm.supabase.co",
+  supabaseKey: "sb_publishable_yzzb6Ap8xL5eZFZC62MjaA_d5gMOQtC"
 };
