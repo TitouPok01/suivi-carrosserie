@@ -223,7 +223,7 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .lightbox .cap{color:#eceef2;font-size:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--ink);color:#fff;padding:14px 22px;border-radius:999px;font-size:16px;font-weight:500;z-index:99;max-width:calc(100% - 32px);box-shadow:0 8px 30px rgba(0,0,0,.2)}
 .muted{color:var(--ink-3)}
-@media (prefers-reduced-motion:no-preference){.sheet{animation:in .2s ease-out}@keyframes in{from{transform:translateX(30px);opacity:.5}}}
+@media (prefers-reduced-motion:no-preference){.sheet.anim{animation:in .2s ease-out}@keyframes in{from{transform:translateX(30px);opacity:.5}}}
 
 /* login */
 .login{position:fixed;inset:0;z-index:70;background:var(--bg);display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px));overflow:auto}
@@ -233,3 +233,26 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .login-card h1{text-align:center}
 .login-card p{margin:0;text-align:center}
 .login-err{color:var(--red);font-weight:600}
+
+/* who did what */
+.who.need{background:var(--orange-bg);color:var(--orange);box-shadow:0 0 0 2px var(--orange)}
+.last{display:flex;align-items:center;gap:10px;border:0;background:var(--soft);border-radius:14px;padding:10px 12px;text-align:left;width:100%;font-size:14px;color:var(--ink-2);min-width:0}
+.last>span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.last b{color:var(--ink)}
+.last time{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.last .av,.timeline .av{width:28px;height:28px;font-size:11px}
+.who-line{display:block;font-size:13px;color:var(--ink-2)}
+.who-line b{color:var(--ink);font-weight:700}
+.who-line.ok{color:var(--s6)}
+.who-line.ok b{color:var(--s6)}
+.item .txt>span b{font-weight:700}
+.ck-l{display:flex;flex-direction:column;min-width:0}
+.ck-who{font-size:12px;color:var(--ink-3);font-weight:500}
+.chk-row.on .ck-who{color:var(--s6)}
+.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.timeline li{display:flex;gap:12px;align-items:flex-start}
+.tl-b{display:flex;flex-direction:column;min-width:0;gap:1px;font-size:15px}
+.tl-b span{overflow-wrap:anywhere}
+.tl-b time{font-size:12px;color:var(--ink-3)}
+.av{display:inline-grid;place-items:center;border-radius:50%;background:var(--ink);color:#fff;font-weight:700;flex:none;letter-spacing:0}
+.item .txt span b,.who-line b{display:inline;font-size:inherit}

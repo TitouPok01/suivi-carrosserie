@@ -100,6 +100,10 @@ function dayTxt(iso){const d=daysTo(iso);return d===0?"Aujourd'hui":d===1?'Demai
 function overdue(v){const d=daysTo(v.due);return sIdx(stageOf(v))<2&&d!==null&&d<0}
 function isLate(v){return !v.delivered&&((v.delay&&v.delay.on)||overdue(v))}
 function soonOut(v){const k=stageOf(v);return !v.delivered&&(k==='finition'||(k==='reparation'&&!!v.due&&daysTo(v.due)<=2))}
+function ago(t){const m=Math.round((Date.now()-t)/60000);if(m<1)return "à l'instant";if(m<60)return `il y a ${m} min`;const h=Math.round(m/60);if(h<24)return `il y a ${h} h`;return fmtTime(t)}
+const initials=n=>esc(String(n||'?').trim().split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?');
+const whoName=n=>n?esc(n):"Quelqu'un";
+const ckOn=x=>!!x;const ckWho=x=>x&&typeof x==='object'?`<small class="ck-who">${whoName(x.by)} · ${fmtTime(x.t)}</small>`:'';
 function addDays(iso,n){const [y,m,d]=iso.split('-').map(Number);const t=new Date(y,m-1,d+n);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')}
 function dlTxt(n){return n<7||n%7?n+' j':(n/7)+' sem.'}
 function fmtShort(iso){const [y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('fr-BE',{weekday:'short',day:'numeric',month:'short'})}
@@ -197,7 +201,7 @@ async function clearExamples(){for(const v of S.vehicles.filter(v=>v.example)){
 function render(){$('#atelier-name').textContent=S.config.name||'Atelier carrosserie';renderTop();renderNote();renderAlerts();renderView();renderSheet();renderLb()}
 function renderTop(){
   const sf=S.config.staff;
-  $('#top-r').innerHTML=`${sf.length?`<label class="who">Je suis<select id="me-sel"><option value="">Choisir</option>${sf.map(p=>`<option value="${esc(p.name)}" ${p.name===S.me?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}
+  $('#top-r').innerHTML=`${sf.length?`<label class="who${S.me?'':' need'}">Je suis<select id="me-sel"><option value="">Choisir</option>${sf.map(p=>`<option value="${esc(p.name)}" ${p.name===S.me?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}
     ${installEvt?`<button class="btn" data-act="install">Installer l'appli</button>`:''}
     ${S.push==='off'?`<button class="btn" data-act="push-on">${IC.bell}Notifications</button>`:''}
     <button class="btn icon-only" data-act="settings" aria-label="Réglages" title="Réglages">${IC.gear}</button>
@@ -251,7 +255,7 @@ function renderSheet(){
   else if(sh.mode==='settings')body=settingsForm();
   else if(sh.mode==='list')body=listSheet(sh.kind);
   else{const v=byId(sh.id);if(!v){S.sheet=null;root.innerHTML='';return}body=detail(v);if((sh.tab||'infos')==='msg')markSeen(v.id)}
-  root.innerHTML=`<div class="scrim" data-act="close"></div><aside class="sheet" role="dialog" aria-modal="true">${body}</aside>`;
+  root.innerHTML=`<div class="scrim" data-act="close"></div><aside class="sheet${sh.keep?'':' anim'}" role="dialog" aria-modal="true">${body}</aside>`;
   const s=root.querySelector('.sheet');if(sh.keep)s.scrollTop=sh.toBottom?s.scrollHeight:scroll;sh.keep=true;sh.toBottom=false;
 }
 function closeBtn(){return `<button class="close" data-act="close" aria-label="Fermer">${IC.x}</button>`}
@@ -263,6 +267,7 @@ function detail(v){
   ${v.delivered?`<div class="flag done">${IC.check}<span>Livrée${v.deliveredAt?' le '+fmtTime(v.deliveredAt):''}</span>${w?`<button class="btn sm" data-restore="${esc(v.id)}" style="margin-left:auto;background:var(--bg)">Remettre</button>`:''}</div>`
    :w?`<div class="go-row">${nx?`<button class="big-go" style="${cvar(nx.k)}" data-next="${esc(v.id)}">Passer à : ${nx.l} ${IC.arrow}</button>`:`<button class="big-go" style="${cvar('pret')}" data-deliver="${esc(v.id)}">${IC.check} Livrée au client</button>`}
      ${assets?`<label class="cam-btn upl" title="Prendre une photo">${IC.cam}${S.uploading?'Envoi…':'Photo'}<input type="file" accept="image/*" capture="environment" data-upload="${esc(v.id)}"></label>`:''}</div>`:''}
+  ${(()=>{const h=(v.history||[]).slice(-1)[0];return h?`<button class="last" data-tab="hist"><span class="av">${initials(h.by||'?')}</span><span><b>${whoName(h.by)}</b> · ${esc(h.txt)}</span><time>${esc(ago(h.t))}</time></button>`:''})()}
   ${isLate(v)?`<div class="flag late">${IC.late}<span><b>En retard${v.delay&&v.delay.on&&v.delay.days?' de '+dlTxt(v.delay.days):''}</b> · ${v.delay&&v.delay.on&&v.delay.cause?esc(v.delay.cause):'cause à indiquer dans Infos'}</span></div>`:''}
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="infos" aria-selected="${tab==='infos'}">Infos</button>
@@ -270,6 +275,7 @@ function detail(v){
     <button role="tab" data-tab="msg" aria-selected="${tab==='msg'}">Messages${un?`<span class="n blue">${un}</span>`:ms?`<span class="n">${ms}</span>`:''}</button>
     <button role="tab" data-tab="ctrl" aria-selected="${tab==='ctrl'}">Contrôle</button>
     <button role="tab" data-tab="photos" aria-selected="${tab==='photos'}">Photos${ph.length?`<span class="n">${ph.length}</span>`:''}</button>
+    <button role="tab" data-tab="hist" aria-selected="${tab==='hist'}">Historique</button>
   </div>`;
   let pane='';
   if(tab==='infos'){const dl=v.delay||{};const od=overdue(v);const hist=[...(v.history||[])].reverse();
@@ -283,30 +289,33 @@ function detail(v){
       <p class="lbl">De combien ?</p><div class="delays">${[1,2,3,7,14].map(n=>`<button class="${(dl.days||0)===n?'on':''}" data-delay="${n}" ${dis}>+${dlTxt(n)}</button>`).join('')}</div>
       ${dl.days&&dl.origDue?`<p class="muted" style="margin:0;font-size:14px">Finie pour le ${esc(fmtDate(v.due))} au lieu du ${esc(fmtDate(dl.origDue))}</p>`:''}`:''}
     <div class="two"><label class="f">Couleur<input id="d-color" value="${esc(v.color||'')}" ${dis}></label><label class="f">N° de dossier<input id="d-client" value="${esc(v.client||'')}" ${dis}></label></div>
-    <details class="hist"><summary>Historique</summary><ul>${hist.map(h=>`<li><time>${fmtTime(h.t)}${h.by?' · '+esc(h.by):''}</time>${esc(h.txt)}</li>`).join('')}</ul></details>
     ${w?(S.confirmDel?`<div class="confirm">Supprimer cette voiture ?<button class="btn red sm" data-del="${esc(v.id)}">Oui, supprimer</button><button class="btn sm" data-act="nodel" style="background:var(--bg)">Non</button></div>`:`<button class="btn red sm" data-act="askdel" style="align-self:flex-start">Supprimer la voiture</button>`):''}`;}
   else if(tab==='urg'){const ts=tasksOf(v.id);
-    pane=`${ts.length?`<div class="items">${ts.map(taskItem).join('')}</div>`:`<p class="muted" style="margin:0">Rien d'urgent pour cette voiture.</p>`}
+    pane=`${ts.length?`<div class="items">${ts.map(t=>taskItem(t,false)).join('')}</div>`:`<p class="muted" style="margin:0">Rien d'urgent pour cette voiture.</p>`}
     ${w?`<form class="add" id="task-form"><input id="t-text" placeholder="Ex. clip de pare-chocs à commander" autocomplete="off">${choices()}<button class="btn go" type="submit">${IC.plus}Ajouter l'urgence</button></form>`:''}`;}
   else if(tab==='msg'){const msgs=msgsOf(v.id);
     pane=`<div class="chat">${msgs.map(m=>`<div class="bubble ${m.role==='deviseur'?'dev':''} ${m.by&&m.by===S.me?'mine':''}"><span class="by">${esc(m.by||ROLES[m.role]||'')}${m.role&&m.by?' · '+ROLES[m.role]:''} · ${fmtTime(m.t||0)}</span>${esc(m.text)}</div>`).join('')||`<p class="muted" style="margin:0">Pas encore de message. Écrivez ${myRole()==='deviseur'?"à l'atelier":'au deviseur'} ici.</p>`}</div>
     ${w?`<form class="say" id="msg-form"><textarea id="m-text" rows="1" placeholder="Écrire un message…"></textarea><button class="btn go icon-only" type="submit" aria-label="Envoyer">${IC.send}</button></form>`:''}`;}
   else if(tab==='ctrl'){const qc=v.qc||{};const wa=v.wash||{};const qn=QC.filter(x=>qc[x[0]]).length;const wn=WASH.filter(x=>wa[x[0]]).length;
-    pane=`<p class="lbl">Contrôle final · ${qn}/${QC.length}</p><div class="checks">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qc="${kk}" ${dis}><span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span>${esc(l)}</button>`).join('')}</div>
+    pane=`<p class="lbl">Contrôle final · ${qn}/${QC.length}</p><div class="checks">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qc="${kk}" ${dis}><span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(qc[kk])}</span></button>`).join('')}</div>
     ${w&&k==='controle'&&qn===QC.length?`<button class="big-go" style="${cvar('lavage')}" data-stagego="lavage">Contrôle OK → Lavage ${IC.arrow}</button>`:''}
-    <p class="lbl">Lavage · ${wn}/${WASH.length}</p><div class="checks">${WASH.map(([kk,l])=>`<button class="chk-row ${wa[kk]?'on':''}" data-wash="${kk}" ${dis}><span class="box-ck ${wa[kk]?'on':''}">${wa[kk]?IC.check:''}</span>${esc(l)}</button>`).join('')}</div>
+    <p class="lbl">Lavage · ${wn}/${WASH.length}</p><div class="checks">${WASH.map(([kk,l])=>`<button class="chk-row ${wa[kk]?'on':''}" data-wash="${kk}" ${dis}><span class="box-ck ${wa[kk]?'on':''}">${wa[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(wa[kk])}</span></button>`).join('')}</div>
     ${w&&k==='lavage'&&wn===WASH.length?`<button class="big-go" style="${cvar('pret')}" data-stagego="pret">Lavage fait → Prête ${IC.arrow}</button>`:''}`;}
+  else if(tab==='hist'){const hist=[...(v.history||[])].reverse();
+    pane=hist.length?`<ul class="timeline">${hist.map(h=>`<li><span class="av">${initials(h.by||'?')}</span><span class="tl-b"><b>${whoName(h.by)}</b><span>${esc(h.txt)}</span><time>${fmtTime(h.t)} · ${esc(ago(h.t))}</time></span></li>`).join('')}</ul>`:`<p class="muted" style="margin:0">Aucune action pour l'instant.</p>`;}
   else{pane=`${assets&&w?`<div class="photo-btns"><label class="btn go upl">${IC.cam}Photo<input type="file" accept="image/*" capture="environment" data-upload="${esc(v.id)}"></label>
       <label class="btn upl">${IC.img}Galerie<input type="file" accept="image/*" multiple data-upload="${esc(v.id)}"></label></div>`:''}
     ${S.uploading?`<p class="muted" style="margin:0">Envoi de ${S.uploading} photo${S.uploading>1?'s':''}…</p>`:''}
-    ${ph.length?`<div class="photos">${ph.slice().reverse().map(p=>`<button class="ph" data-lb="${esc(p.id)}"><img src="${photoUrl(p.asset)}" alt="" loading="lazy"><span>${esc(st(OLD[p.stage]||p.stage||'pcl').l)}</span></button>`).join('')}</div>`:`<p class="muted" style="margin:0">Pas encore de photo.</p>`}`;}
+    ${ph.length?`<div class="photos">${ph.slice().reverse().map(p=>`<button class="ph" data-lb="${esc(p.id)}"><img src="${photoUrl(p.asset)}" alt="" loading="lazy"><span>${esc(st(OLD[p.stage]||p.stage||'pcl').l)}${p.by?' · '+esc(p.by):''}</span></button>`).join('')}</div>`:`<p class="muted" style="margin:0">Pas encore de photo.</p>`}`;}
   return head+`<div class="pane">${pane}</div>`;
 }
 function choices(){return `<div class="choice">${[['piece','Pièce à commander'],['action','Chose à faire']].map(([k,l])=>`<button type="button" data-kind="${k}" aria-pressed="${S.kind===k}">${l}</button>`).join('')}</div>
   <div class="choice">${Object.entries(ROLES).map(([k,l])=>`<button type="button" data-forr="${k}" aria-pressed="${S.forR===k}">Pour ${l.toLowerCase()}</button>`).join('')}</div>`}
 function taskItem(t,withCar){const v=byId(t.vehicle);
   return `<div class="item ${t.done?'done':'red'}"><button class="box-ck ${t.done?'on':''}" data-task="${esc(t.id)}" aria-label="Réglé" ${W()?'':'disabled'}>${t.done?IC.check:''}</button>
-    <span class="txt"><b>${esc(t.text)}</b><span>${withCar&&v?esc(v.plate)+' · '+esc(v.model)+' · ':''}${t.kind==='piece'?'Pièce à commander':'À faire'} · pour ${esc((ROLES[t.for]||'').toLowerCase())}${t.done&&t.doneBy?' · réglé par '+esc(t.doneBy):''}</span></span>
+    <span class="txt"><b>${esc(t.text)}</b><span>${withCar&&v?esc(v.plate)+' · '+esc(v.model)+' · ':''}${t.kind==='piece'?'Pièce à commander':'À faire'} · pour <b>${esc((ROLES[t.for]||'').toLowerCase())}</b></span>
+      <span class="who-line">Demandée par <b>${whoName(t.by)}</b> · ${fmtTime(t.t||0)}</span>
+      ${t.done?`<span class="who-line ok">✓ Réglée par <b>${whoName(t.doneBy)}</b>${t.doneAt?' · '+fmtTime(t.doneAt):''}</span>`:''}</span>
     ${withCar&&v?`<button class="btn sm" data-open="${esc(v.id)}" style="background:var(--bg)">Voir</button>`:''}</div>`}
 function listSheet(kind){
   const a=active();
@@ -314,7 +323,8 @@ function listSheet(kind){
     return `<div class="sh-top"><div class="t"><h2>Urgences</h2><p>Pièces à commander et choses à faire vite.</p></div>${closeBtn()}</div>
     ${ts.length?`<div class="items">${ts.map(t=>taskItem(t,true)).join('')}</div>`:`<p class="muted" style="margin:0">Rien d'urgent 👍</p>`}
     ${W()&&a.length?`<form class="add" id="quick-form"><p class="lbl">Nouvelle urgence</p><select id="q-veh">${a.map(v=>`<option value="${esc(v.id)}">${esc(v.plate)} · ${esc(v.model)}</option>`).join('')}</select>
-      <input id="q-text" placeholder="Qu'est-ce qui est urgent ?" autocomplete="off">${choices()}<button class="btn go" type="submit">${IC.plus}Ajouter</button></form>`:''}`;}
+      <input id="q-text" placeholder="Qu'est-ce qui est urgent ?" autocomplete="off">${choices()}<button class="btn go" type="submit">${IC.plus}Ajouter</button></form>`:''}
+    ${(()=>{const done=S.tasks.filter(t=>t.done&&t.doneAt&&Date.now()-t.doneAt<36e5*24).sort((x,y)=>y.doneAt-x.doneAt);return done.length?`<p class="lbl">Réglées ces dernières 24 h</p><div class="items">${done.map(t=>taskItem(t,true)).join('')}</div>`:''})()}`;}
   if(kind==='late'){const ls=a.filter(isLate).sort((x,y)=>(x.due||'9').localeCompare(y.due||'9'));
     return `<div class="sh-top"><div class="t"><h2>En retard</h2><p>Et pourquoi.</p></div>${closeBtn()}</div>
     <div class="items">${ls.map(v=>{const c=v.delay&&v.delay.on&&v.delay.cause;return `<button class="row" data-open="${esc(v.id)}">${plate(v.plate)}<span class="txt"><b>${esc(v.model)}</b><span style="${c?'':'color:var(--orange);font-weight:600'}">${c?(v.delay.days?'+'+dlTxt(v.delay.days)+' · ':'')+esc(v.delay.cause)+(v.delay.note?' · '+esc(v.delay.note):''):'Pourquoi ? À indiquer'}</span></span>${v.due?`<span class="when late">${esc(dayTxt(v.due))}</span>`:''}</button>`}).join('')||'<p class="muted" style="margin:0">Aucune voiture en retard 👍</p>'}</div>`;}
@@ -366,8 +376,8 @@ document.addEventListener('click',async e=>{
   if(d.restore!==undefined){await patch(d.restore,{delivered:false},'Remise en cours');return}
   if(d.stage&&sid){await moveStage(sid,d.stage);return}
   if(d.stagego&&sid){await moveStage(sid,d.stagego);return}
-  if(d.qc&&sid){const v=byId(sid);const qc={...(v.qc||{}),[d.qc]:!(v.qc||{})[d.qc]};const all=QC.every(x=>qc[x[0]]);await patch(sid,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet':null);return}
-  if(d.wash&&sid){const v=byId(sid);const wash={...(v.wash||{}),[d.wash]:!(v.wash||{})[d.wash]};await patch(sid,{wash},WASH.every(x=>wash[x[0]])?'Lavage terminé':null);return}
+  if(d.qc&&sid){const v=byId(sid);const qc={...(v.qc||{}),[d.qc]:(v.qc||{})[d.qc]?false:{by:signer(),t:Date.now()}};const all=QC.every(x=>qc[x[0]]);const lbl=(QC.find(x=>x[0]===d.qc)||[])[1]||'';await patch(sid,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet ✓':(qc[d.qc]?'Contrôle : '+lbl+' ✓':'Contrôle : '+lbl+' décoché'));return}
+  if(d.wash&&sid){const v=byId(sid);const wash={...(v.wash||{}),[d.wash]:(v.wash||{})[d.wash]?false:{by:signer(),t:Date.now()}};const wl=(WASH.find(x=>x[0]===d.wash)||[])[1]||'';await patch(sid,{wash},WASH.every(x=>wash[x[0]])?'Lavage terminé ✓':(wash[d.wash]?'Lavage : '+wl+' ✓':'Lavage : '+wl+' décoché'));return}
   if(d.delay&&sid){const v=byId(sid);const dl=v.delay||{};const orig=dl.origDue||v.due||todayISO();const n=+d.delay;const nd=addDays(orig,n);
     await patch(sid,{due:nd,delay:{...dl,on:true,days:n,origDue:orig}},`Retard de ${dlTxt(n)} : finie pour le ${fmtDate(nd)}`);toast(`Retard de ${dlTxt(n)} enregistré`);return}
   if(d.lb){S.lb=d.lb;render();return}
