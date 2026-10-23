@@ -23,7 +23,7 @@ const STAGES=[
   {k:'controle',l:'Contrôle final',c:'--s4'},{k:'lavage',l:'Lavage',c:'--s5'},{k:'pret',l:'Prête',c:'--s6'}];
 const OLD={reception:'pcl',demontage:'reparation',tolerie:'reparation',preparation:'reparation',peinture:'reparation',remontage:'reparation'};
 const CAUSES=['Pièce en retard','Pièce manquante / erreur de commande','Attente accord expert','Dégâts en plus découverts','Chez un sous-traitant','Attente client','Trop de travail à l\'atelier','Autre'];
-const QC=[['peinture','Peinture : teinte et raccords'],['jeux','Portes et capots bien alignés'],['eclairage','Phares et électrique'],['voyants','Aucun voyant allumé'],['adas','Calibrage ADAS si besoin'],['essai','Essai routier'],['dossier','Photos de fin prises']];
+const QC=[['ajustage','Ajustage / alignement'],['peinture','Contrôle qualité peinture'],['teinte','Contrôle teinte du véhicule'],['diag','Mise sur ordinateur après réparation'],['camera','Contrôle calibrage caméra'],['phares','Réglage phares'],['ouvrants','Contrôle facilité ouverture/fermeture'],['finitions','Finitions'],['poussiere','Poussière vérifiée'],['brouillard','Brouillard vérifié'],['proprete','Qualité et propreté du travail/réparation']];
 const WASH=[['ext','Extérieur lavé'],['int','Intérieur aspiré'],['vitres','Vitres et jantes'],['protect','Protections retirées']];
 const ROLES={atelier:'Atelier',deviseur:'Deviseur'};
 const MODELS=['911 Carrera','911 Carrera S','911 Carrera 4S','911 Turbo S','911 GT3','718 Cayman','718 Boxster','Taycan','Taycan 4S','Taycan Cross Turismo','Macan','Macan Electric','Cayenne','Cayenne E-Hybrid','Cayenne Coupé','Panamera','Panamera 4 E-Hybrid'];
