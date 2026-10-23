@@ -100,6 +100,8 @@ function dayTxt(iso){const d=daysTo(iso);return d===0?"Aujourd'hui":d===1?'Demai
 function overdue(v){const d=daysTo(v.due);return sIdx(stageOf(v))<2&&d!==null&&d<0}
 function isLate(v){return !v.delivered&&((v.delay&&v.delay.on)||overdue(v))}
 function soonOut(v){const k=stageOf(v);return !v.delivered&&(k==='finition'||(k==='reparation'&&!!v.due&&daysTo(v.due)<=2))}
+function addDays(iso,n){const [y,m,d]=iso.split('-').map(Number);const t=new Date(y,m-1,d+n);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')}
+function dlTxt(n){return n<7||n%7?n+' j':(n/7)+' sem.'}
 function fmtShort(iso){const [y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('fr-BE',{weekday:'short',day:'numeric',month:'short'})}
 function dueLine(v,big){
   if(!v.due||v.delivered)return '';const k=stageOf(v);const d=daysTo(v.due);
@@ -218,7 +220,7 @@ function renderAlerts(){
 }
 function card(v){
   const k=stageOf(v);const nx=STAGES[sIdx(k)+1];const ot=openTasks(v.id).length;const un=unread(v.id);
-  const pills=[ot?`<span class="pill urg">Urgent</span>`:'',isLate(v)?`<span class="pill late">Retard</span>`:'',un?`<span class="pill msg">${un} message${un>1?'s':''}</span>`:'',
+  const pills=[ot?`<span class="pill urg">Urgent</span>`:'',isLate(v)?`<span class="pill late">Retard${v.delay&&v.delay.on&&v.delay.days?' +'+dlTxt(v.delay.days):''}</span>`:'',un?`<span class="pill msg">${un} message${un>1?'s':''}</span>`:'',
     v.example?'<span class="pill ex">Exemple</span>':''].join('');
   const last=photosOf(v.id).slice(-1)[0];
   const nextBtn=W()?(nx?`<button class="card-next" style="--nc:var(${nx.c});--nbg:var(${nx.c}-bg)" data-next="${esc(v.id)}" aria-label="Passer à ${nx.l}">${nx.l} ${IC.arrow}</button>`
@@ -261,7 +263,7 @@ function detail(v){
   ${v.delivered?`<div class="flag done">${IC.check}<span>Livrée${v.deliveredAt?' le '+fmtTime(v.deliveredAt):''}</span>${w?`<button class="btn sm" data-restore="${esc(v.id)}" style="margin-left:auto;background:var(--bg)">Remettre</button>`:''}</div>`
    :w?`<div class="go-row">${nx?`<button class="big-go" style="${cvar(nx.k)}" data-next="${esc(v.id)}">Passer à : ${nx.l} ${IC.arrow}</button>`:`<button class="big-go" style="${cvar('pret')}" data-deliver="${esc(v.id)}">${IC.check} Livrée au client</button>`}
      ${assets?`<label class="cam-btn upl" title="Prendre une photo">${IC.cam}${S.uploading?'Envoi…':'Photo'}<input type="file" accept="image/*" capture="environment" data-upload="${esc(v.id)}"></label>`:''}</div>`:''}
-  ${isLate(v)?`<div class="flag late">${IC.late}<span><b>En retard</b> · ${v.delay&&v.delay.on&&v.delay.cause?esc(v.delay.cause):'cause à indiquer dans Infos'}</span></div>`:''}
+  ${isLate(v)?`<div class="flag late">${IC.late}<span><b>En retard${v.delay&&v.delay.on&&v.delay.days?' de '+dlTxt(v.delay.days):''}</b> · ${v.delay&&v.delay.on&&v.delay.cause?esc(v.delay.cause):'cause à indiquer dans Infos'}</span></div>`:''}
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="infos" aria-selected="${tab==='infos'}">Infos</button>
     <button role="tab" data-tab="urg" aria-selected="${tab==='urg'}">Urgences${ot?`<span class="n red">${ot}</span>`:''}</button>
@@ -277,7 +279,9 @@ function detail(v){
     <label class="f">Transport<input id="d-transport" value="${esc(v.transport||'')}" placeholder="Plateau, chauffeur…" ${dis}></label>
     <button class="toggle ${dl.on?'on':''}" data-act="delay" ${dis}><span class="k"></span>${dl.on?'En retard':'Signaler un retard'}</button>
     ${dl.on||od?`<div class="two"><label class="f">Pourquoi ?<select id="d-cause" ${dis}><option value="">Choisir</option>${CAUSES.map(c=>`<option ${dl.cause===c?'selected':''}>${esc(c)}</option>`).join('')}</select></label>
-      <label class="f">Détail<input id="d-cnote" value="${esc(dl.note||'')}" placeholder="Ex. livré lundi" ${dis}></label></div>`:''}
+      <label class="f">Détail<input id="d-cnote" value="${esc(dl.note||'')}" placeholder="Ex. livré lundi" ${dis}></label></div>
+      <p class="lbl">De combien ?</p><div class="delays">${[1,2,3,7,14].map(n=>`<button class="${(dl.days||0)===n?'on':''}" data-delay="${n}" ${dis}>+${dlTxt(n)}</button>`).join('')}</div>
+      ${dl.days&&dl.origDue?`<p class="muted" style="margin:0;font-size:14px">Finie pour le ${esc(fmtDate(v.due))} au lieu du ${esc(fmtDate(dl.origDue))}</p>`:''}`:''}
     <div class="two"><label class="f">Couleur<input id="d-color" value="${esc(v.color||'')}" ${dis}></label><label class="f">N° de dossier<input id="d-client" value="${esc(v.client||'')}" ${dis}></label></div>
     <details class="hist"><summary>Historique</summary><ul>${hist.map(h=>`<li><time>${fmtTime(h.t)}${h.by?' · '+esc(h.by):''}</time>${esc(h.txt)}</li>`).join('')}</ul></details>
     ${w?(S.confirmDel?`<div class="confirm">Supprimer cette voiture ?<button class="btn red sm" data-del="${esc(v.id)}">Oui, supprimer</button><button class="btn sm" data-act="nodel" style="background:var(--bg)">Non</button></div>`:`<button class="btn red sm" data-act="askdel" style="align-self:flex-start">Supprimer la voiture</button>`):''}`;}
@@ -313,7 +317,7 @@ function listSheet(kind){
       <input id="q-text" placeholder="Qu'est-ce qui est urgent ?" autocomplete="off">${choices()}<button class="btn go" type="submit">${IC.plus}Ajouter</button></form>`:''}`;}
   if(kind==='late'){const ls=a.filter(isLate).sort((x,y)=>(x.due||'9').localeCompare(y.due||'9'));
     return `<div class="sh-top"><div class="t"><h2>En retard</h2><p>Et pourquoi.</p></div>${closeBtn()}</div>
-    <div class="items">${ls.map(v=>{const c=v.delay&&v.delay.on&&v.delay.cause;return `<button class="row" data-open="${esc(v.id)}">${plate(v.plate)}<span class="txt"><b>${esc(v.model)}</b><span style="${c?'':'color:var(--orange);font-weight:600'}">${c?esc(v.delay.cause)+(v.delay.note?' · '+esc(v.delay.note):''):'Pourquoi ? À indiquer'}</span></span>${v.due?`<span class="when late">${esc(dayTxt(v.due))}</span>`:''}</button>`}).join('')||'<p class="muted" style="margin:0">Aucune voiture en retard 👍</p>'}</div>`;}
+    <div class="items">${ls.map(v=>{const c=v.delay&&v.delay.on&&v.delay.cause;return `<button class="row" data-open="${esc(v.id)}">${plate(v.plate)}<span class="txt"><b>${esc(v.model)}</b><span style="${c?'':'color:var(--orange);font-weight:600'}">${c?(v.delay.days?'+'+dlTxt(v.delay.days)+' · ':'')+esc(v.delay.cause)+(v.delay.note?' · '+esc(v.delay.note):''):'Pourquoi ? À indiquer'}</span></span>${v.due?`<span class="when late">${esc(dayTxt(v.due))}</span>`:''}</button>`}).join('')||'<p class="muted" style="margin:0">Aucune voiture en retard 👍</p>'}</div>`;}
   const os=a.filter(soonOut).sort((x,y)=>(x.back||x.due||'9').localeCompare(y.back||y.due||'9'));
   return `<div class="sh-top"><div class="t"><h2>Bientôt finies</h2><p>Pour organiser les sorties et les rapatriements.</p></div>${closeBtn()}</div>
   <div class="items">${os.map(v=>`<button class="row" data-open="${esc(v.id)}">${plate(v.plate)}<span class="txt"><b>${esc(v.model)}</b><span>${esc(st(stageOf(v)).l)}${v.transport?' · '+esc(v.transport):''}</span></span><span class="when">${stageOf(v)==='reparation'?'Sort '+esc(dayTxt(v.due).toLowerCase()):v.back?'Retour '+esc(dayTxt(v.back).toLowerCase()):'Retour à fixer'}</span></button>`).join('')||'<p class="muted" style="margin:0">Aucune voiture ne sort bientôt de la carrosserie.</p>'}</div>`;
@@ -350,7 +354,7 @@ function renderLb(){const r=$('#lb-root');const p=S.lb&&S.photos.find(x=>x.id===
 /* events */
 document.addEventListener('click',async e=>{
   if(Date.now()-S.justDragged<350){e.preventDefault();return}
-  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
+  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-delay],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
   if(!t)return;const d=t.dataset;const sid=S.sheet&&S.sheet.mode==='detail'&&S.sheet.id;
   if(d.kind){S.kind=d.kind;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(d.forr){S.forR=d.forr;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
@@ -364,6 +368,8 @@ document.addEventListener('click',async e=>{
   if(d.stagego&&sid){await moveStage(sid,d.stagego);return}
   if(d.qc&&sid){const v=byId(sid);const qc={...(v.qc||{}),[d.qc]:!(v.qc||{})[d.qc]};const all=QC.every(x=>qc[x[0]]);await patch(sid,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet':null);return}
   if(d.wash&&sid){const v=byId(sid);const wash={...(v.wash||{}),[d.wash]:!(v.wash||{})[d.wash]};await patch(sid,{wash},WASH.every(x=>wash[x[0]])?'Lavage terminé':null);return}
+  if(d.delay&&sid){const v=byId(sid);const dl=v.delay||{};const orig=dl.origDue||v.due||todayISO();const n=+d.delay;const nd=addDays(orig,n);
+    await patch(sid,{due:nd,delay:{...dl,on:true,days:n,origDue:orig}},`Retard de ${dlTxt(n)} : finie pour le ${fmtDate(nd)}`);toast(`Retard de ${dlTxt(n)} enregistré`);return}
   if(d.lb){S.lb=d.lb;render();return}
   if(d.delphoto){e.stopPropagation();await deletePhoto(d.delphoto);return}
   if(d.del){await deleteVehicle(d.del);return}

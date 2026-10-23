@@ -47,5 +47,18 @@ create trigger push_vehicles_new after insert on public.vehicles
 
 drop trigger if exists push_vehicles_stage on public.vehicles;
 create trigger push_vehicles_stage after update on public.vehicles
-  for each row when (old.data->>'stage' is distinct from new.data->>'stage')
+  for each row when (old.data->>'stage' is distinct from new.data->>'stage'
+                  or old.data->'delay'->>'days' is distinct from new.data->'delay'->>'days')
   execute function private.notify_push();
+
+-- 3) Rappel chaque matin vers 7h30 (heure belge en hiver, 8h30 en été) :
+--    voitures à finir demain et dates de fin dépassées
+create extension if not exists pg_cron;
+select cron.unschedule(jobid) from cron.job where jobname = 'rappel-matin';
+select cron.schedule('rappel-matin', '30 6 * * *', $job$
+  select net.http_post(
+    url := 'https://lhbufaoiumslovbdxesm.supabase.co/functions/v1/notify',
+    body := '{"type":"DAILY"}'::jsonb,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-webhook-secret', 'METTRE-LE-SECRET-ICI')
+  );
+$job$);
