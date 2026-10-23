@@ -219,8 +219,8 @@ function card(v){
   const pills=[ot?`<span class="pill urg">Urgent</span>`:'',isLate(v)?`<span class="pill late">Retard</span>`:'',un?`<span class="pill msg">${un} message${un>1?'s':''}</span>`:'',
     v.example?'<span class="pill ex">Exemple</span>':''].join('');
   const last=photosOf(v.id).slice(-1)[0];
-  const nextBtn=W()?(nx?`<button class="card-next" style="--nc:var(${nx.c});--nbg:var(${nx.c}-bg)" data-next="${esc(v.id)}" aria-label="Passer à ${nx.l}" title="Passer à ${nx.l}">${IC.arrow}</button>`
-    :`<button class="card-next" style="--nc:var(--s6);--nbg:var(--s6-bg)" data-deliver="${esc(v.id)}" aria-label="Livrée" title="Livrée au client">${IC.check}</button>`):'';
+  const nextBtn=W()?(nx?`<button class="card-next" style="--nc:var(${nx.c});--nbg:var(${nx.c}-bg)" data-next="${esc(v.id)}" aria-label="Passer à ${nx.l}">${nx.l} ${IC.arrow}</button>`
+    :`<button class="card-next" style="--nc:var(--s6);--nbg:var(--s6-bg)" data-deliver="${esc(v.id)}" aria-label="Livrée au client">${IC.check} Livrée</button>`):'';
   return `<article class="card"><button class="card-open" data-open="${esc(v.id)}" ${W()?`data-drag="${esc(v.id)}"`:''}><span class="card-top">${plate(v.plate)}${last?`<img class="thumb" src="${photoUrl(last.asset)}" alt="" loading="lazy" draggable="false">`:''}</span><span class="model">${esc(v.model||'')}</span>${dueLine(v,false)}${pills?`<span class="pills">${pills}</span>`:''}</button>${nextBtn}</article>`;
 }
 function renderView(){
