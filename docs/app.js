@@ -78,7 +78,9 @@ try{S.seen=JSON.parse(localStorage.getItem('atelier.seen')||'{}')||{}}catch(e){S
 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const W=()=>S.ready&&!S.offline;
+const online=()=>S.ready&&!S.offline;
+const meOK=()=>!!S.me&&S.config.staff.some(p=>p.name===S.me);
+const W=()=>online()&&meOK();
 const stageOf=v=>STAGES.some(s=>s.k===v.stage)?v.stage:(OLD[v.stage]||'pcl');
 const active=()=>S.vehicles.filter(v=>!v.delivered);
 const byId=id=>S.vehicles.find(v=>v.id===id);
@@ -123,13 +125,15 @@ const signer=()=>S.me||'';
 
 const queues={};
 function q(path,fn){const p=(queues[path]||Promise.resolve()).then(fn,fn);queues[path]=p.catch(()=>{});return p}
+function askName(){S.viewOnly=false;render();toast('Choisissez d\'abord votre nom')}
 async function patch(id,data,ev){
-  if(!W()){toast('Lecture seule.');return}
-  const v=byId(id);if(!v)return;const upd={...data,updatedAt:Date.now()};
+  if(!W()){askName();return}
+  const v=byId(id);if(!v)return;const upd={...data,updatedAt:Date.now(),updatedBy:signer()};
+  if(ev===undefined&&Object.keys(data).length)ev='Fiche modifiée';
   if(ev){const h=(v.history||[]).slice(-49);h.push({t:Date.now(),by:signer(),txt:ev});upd.history=h}
   try{await q('vehicles/'+id,()=>db.doc('vehicles/'+id).update(upd))}catch(e){toast(dbErr(e))}
 }
-async function saveConfig(cfg){if(!W())return;try{await q('config/main',()=>db.doc('config/main').set(cfg));toast('Enregistré')}catch(e){toast(dbErr(e))}}
+async function saveConfig(cfg){if(!online())return;cfg={...cfg,updatedBy:signer(),updatedAt:Date.now()};try{await q('config/main',()=>db.doc('config/main').set(cfg));toast('Enregistré')}catch(e){toast(dbErr(e))}}
 
 /* actions */
 async function moveStage(id,k){const v=byId(id);if(!v||stageOf(v)===k)return;await patch(id,{stage:k},`Étape : ${st(k).l}`);toast(`${v.plate} → ${st(k).l}`)}
@@ -141,14 +145,14 @@ async function addVehicle(f){
   try{const ref=await db.collection('vehicles').add(doc);S.sheet={mode:'detail',id:ref.id,tab:'photos'};markSeen(ref.id);render();toast('Voiture ajoutée. Prenez les photos d\'entrée.')}catch(e){toast(dbErr(e))}
 }
 async function addTask(vid,text,kind,forR){
-  if(!W()||!text.trim())return false;if(!byId(vid)){toast('Choisissez la voiture.');return false}
+  if(!W()){askName();return false}if(!text.trim())return false;if(!byId(vid)){toast('Choisissez la voiture.');return false}
   try{await db.collection('tasks').add({vehicle:vid,text:text.trim(),kind,for:forR,by:signer(),role:myRole(),t:Date.now(),done:false});
     await patch(vid,{},`Urgence : ${text.trim()}`);toast('Urgence ajoutée');return true}catch(e){toast(dbErr(e));return false}
 }
-async function toggleTask(tid){const t=S.tasks.find(x=>x.id===tid);if(!t||!W())return;const done=!t.done;
-  try{await q('tasks/'+tid,()=>db.doc('tasks/'+tid).update({done,doneBy:done?signer():'',doneAt:done?Date.now():0}));if(done){await patch(t.vehicle,{},`Réglé : ${t.text}`);toast('Réglé ✓')}}catch(e){toast(dbErr(e))}}
-async function sendMsg(vid,text){if(!W()||!text.trim())return false;
-  try{await db.collection('messages').add({vehicle:vid,text:text.trim(),by:signer(),role:myRole(),t:Date.now()});markSeen(vid);return true}catch(e){toast(dbErr(e));return false}}
+async function toggleTask(tid){const t=S.tasks.find(x=>x.id===tid);if(!t)return;if(!W()){askName();return}const done=!t.done;
+  try{await q('tasks/'+tid,()=>db.doc('tasks/'+tid).update({done,doneBy:done?signer():'',doneAt:done?Date.now():0}));if(done){await patch(t.vehicle,{},`Urgence réglée : ${t.text}`);toast('Réglé ✓')}else{await patch(t.vehicle,{},`Urgence rouverte : ${t.text}`)}}catch(e){toast(dbErr(e))}}
+async function sendMsg(vid,text){if(!W()){askName();return false}if(!text.trim())return false;
+  try{await db.collection('messages').add({vehicle:vid,text:text.trim(),by:signer(),role:myRole(),t:Date.now()});markSeen(vid);const tx=text.trim();await patch(vid,{},`Message : ${tx.length>60?tx.slice(0,60)+'…':tx}`);return true}catch(e){toast(dbErr(e));return false}}
 async function deleteVehicle(id){
   for(const p of photosOf(id)){try{await db.doc('photos/'+p.id).delete()}catch(e){} if(assets){try{await assets.delete(p.asset)}catch(e){}}}
   for(const t of S.tasks.filter(t=>t.vehicle===id)){try{await db.doc('tasks/'+t.id).delete()}catch(e){}}
@@ -173,9 +177,9 @@ async function uploadPhotos(id,files){
   }
   if(n){await patch(id,{},`${n} photo${n>1?'s':''} (${st(stageOf(v)).l})`);toast(`${n} photo${n>1?'s':''} ajoutée${n>1?'s':''}`)}
 }
-async function deletePhoto(pid){const p=S.photos.find(x=>x.id===pid);if(!p)return;
+async function deletePhoto(pid){const p=S.photos.find(x=>x.id===pid);if(!p)return;if(!W()){askName();return}
   try{await db.doc('photos/'+pid).delete()}catch(e){toast(dbErr(e));return}
-  if(assets){try{await assets.delete(p.asset)}catch(e){}}S.lb=null;render();toast('Photo supprimée')}
+  if(assets){try{await assets.delete(p.asset)}catch(e){}}await patch(p.vehicle,{},'Photo supprimée');S.lb=null;render();toast('Photo supprimée')}
 async function loadExamples(){
   const ex=[
     ['1-GTS-911','911 Carrera S','Gris craie','Choc avant droit : pare-chocs, aile, phare, capteur de stationnement.','reparation',5,'',null,[['Phare avant droit : confirmer la référence','piece','deviseur']],['Phare commandé ce matin, livré jeudi.','deviseur']],
@@ -198,7 +202,7 @@ async function clearExamples(){for(const v of S.vehicles.filter(v=>v.example)){
   try{await db.doc('vehicles/'+v.id).delete()}catch(e){}}toast('Exemples supprimés')}
 
 /* render */
-function render(){$('#atelier-name').textContent=S.config.name||'Atelier carrosserie';renderTop();renderNote();renderAlerts();renderView();renderSheet();renderLb()}
+function render(){$('#atelier-name').textContent=S.config.name||'Atelier carrosserie';renderPicker();renderTop();renderNote();renderAlerts();renderView();renderSheet();renderLb()}
 function renderTop(){
   const sf=S.config.staff;
   $('#top-r').innerHTML=`${sf.length?`<label class="who${S.me?'':' need'}">Je suis<select id="me-sel"><option value="">Choisir</option>${sf.map(p=>`<option value="${esc(p.name)}" ${p.name===S.me?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}
@@ -207,11 +211,21 @@ function renderTop(){
     <button class="btn icon-only" data-act="settings" aria-label="Réglages" title="Réglages">${IC.gear}</button>
     ${W()?`<button class="btn go" data-act="add">${IC.plus}Nouvelle voiture</button>`:''}`;
 }
+function renderPicker(){
+  const r=$('#pick-root');if(!r)return;
+  if(!online()||meOK()||S.viewOnly||(S.sheet&&S.sheet.mode==='settings')){r.innerHTML='';return}
+  const sf=S.config.staff;
+  r.innerHTML=`<div class="picker"><div class="picker-card"><h1>Qui êtes-vous ?</h1>
+    ${sf.length?`<p class="muted">Touchez votre nom. Toutes vos actions seront signées avec.</p>
+      <div class="names">${sf.map(p=>`<button class="name-btn" data-pickme="${esc(p.name)}"><span class="av">${initials(p.name)}</span><span><b>${esc(p.name)}</b><small>${esc(ROLES[p.role]||'')}</small></span></button>`).join('')}</div>`
+      :`<p class="muted">Ajoutez d'abord l'équipe (carrossiers et deviseur) pour pouvoir signer les actions.</p><button class="btn go" data-act="settings">${IC.gear}Ajouter l'équipe</button>`}
+    <button class="btn ghost-btn" data-act="viewonly">Juste regarder, sans rien modifier</button></div></div>`;
+}
 function renderNote(){
   let h='';
   if(S.offline)h=`<div class="note warn">Pas de connexion internet. Vérifiez le wifi de la tablette.</div>`;
   else if(!S.canWrite)h=`<div class="note">Vous pouvez regarder, mais pas modifier.</div>`;
-  else if(S.config.staff.length&&!S.me)h=`<div class="note">👋 Choisissez votre nom en haut à droite.</div>`;
+  else if(online()&&!meOK()&&S.viewOnly)h=`<div class="note">👀 Mode lecture : vous ne pouvez rien modifier.<button class="btn sm" data-act="pick" style="background:var(--bg)">Choisir mon nom</button></div>`;
   $('#note').innerHTML=h;
 }
 function renderAlerts(){
@@ -344,7 +358,7 @@ function addForm(){
   </form>`;
 }
 function settingsForm(){
-  const c=S.sheet.draft;const w=W();const hasEx=S.vehicles.some(v=>v.example);
+  const c=S.sheet.draft;const w=online();const hasEx=S.vehicles.some(v=>v.example);
   return `<div class="sh-top"><div class="t"><h2>Réglages</h2></div>${closeBtn()}</div>
   <div class="pane"><label class="f">Nom de l'atelier<input id="s-name" value="${esc(c.name)}" ${w?'':'disabled'}></label>
   <p class="lbl">L'équipe</p><div class="team">${c.staff.map((p,i)=>`<div class="li"><input id="s-staff-${i}" data-staffname="${i}" value="${esc(p.name)}" ${w?'':'disabled'}><select id="s-role-${i}" data-staffrole="${i}" ${w?'':'disabled'}>${Object.entries(ROLES).map(([k,l])=>`<option value="${k}" ${p.role===k?'selected':''}>${l}</option>`).join('')}</select>${w?`<button class="btn icon-only sm" data-delstaff="${i}" aria-label="Retirer">${IC.x}</button>`:''}</div>`).join('')||'<p class="muted" style="margin:0">Personne pour l\'instant.</p>'}
@@ -364,11 +378,12 @@ function renderLb(){const r=$('#lb-root');const p=S.lb&&S.photos.find(x=>x.id===
 /* events */
 document.addEventListener('click',async e=>{
   if(Date.now()-S.justDragged<350){e.preventDefault();return}
-  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-delay],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
+  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-delay],[data-pickme],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
   if(!t)return;const d=t.dataset;const sid=S.sheet&&S.sheet.mode==='detail'&&S.sheet.id;
   if(d.kind){S.kind=d.kind;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(d.forr){S.forR=d.forr;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(d.tab&&S.sheet){S.sheet.tab=d.tab;S.sheet.keep=false;S.confirmDel=false;if(d.tab==='msg'){S.sheet.toBottom=true;S.sheet.keep=true}renderSheet();renderView();return}
+  if(d.pickme){S.me=d.pickme;S.viewOnly=false;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();refreshPush();toast(`Bonjour ${S.me} 👋`);return}
   if(d.list){S.sheet={mode:'list',kind:d.list};render();return}
   if(d.task){await toggleTask(d.task);return}
   if(d.next!==undefined){const v=byId(d.next);const nx=STAGES[sIdx(stageOf(v))+1];if(nx)await moveStage(v.id,nx.k);return}
@@ -391,6 +406,8 @@ document.addEventListener('click',async e=>{
     case 'settings':S.sheet={mode:'settings',draft:structuredClone(S.config)};render();break;
     case 'examples':await loadExamples();break;
     case 'install':await installApp();break;
+    case 'pick':S.viewOnly=false;S.me='';render();break;
+    case 'viewonly':S.viewOnly=true;render();break;
     case 'push-on':await enablePush();break;
     case 'push-off':await disablePush();break;
     case 'logout':await logout();break;
@@ -413,14 +430,14 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('change',async e=>{
   const t=e.target;
-  if(t.id==='me-sel'){S.me=t.value;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();refreshPush();return}
+  if(t.id==='me-sel'){S.me=t.value;S.viewOnly=false;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();refreshPush();return}
   if(t.dataset.upload){const files=[...t.files];t.value='';if(files.length)await uploadPhotos(t.dataset.upload,files);return}
   const id=S.sheet&&S.sheet.mode==='detail'&&S.sheet.id;if(!id)return;const v=byId(id);
   if(t.id==='d-due'){await patch(id,{due:t.value},t.value?`Finie pour le ${fmtDate(t.value)}`:'Date retirée')}
   else if(t.id==='d-back'){await patch(id,{back:t.value},t.value?`Rapatriement le ${fmtDate(t.value)}`:'Rapatriement retiré')}
-  else if(t.id==='d-transport'&&t.value!==(v.transport||'')){await patch(id,{transport:t.value.trim()})}
-  else if(t.id==='d-color'&&t.value!==(v.color||'')){await patch(id,{color:t.value.trim()})}
-  else if(t.id==='d-client'&&t.value!==(v.client||'')){await patch(id,{client:t.value.trim()})}
+  else if(t.id==='d-transport'&&t.value!==(v.transport||'')){await patch(id,{transport:t.value.trim()},t.value.trim()?`Transport : ${t.value.trim()}`:'Transport retiré')}
+  else if(t.id==='d-color'&&t.value!==(v.color||'')){await patch(id,{color:t.value.trim()},`Couleur : ${t.value.trim()||'retirée'}`)}
+  else if(t.id==='d-client'&&t.value!==(v.client||'')){await patch(id,{client:t.value.trim()},`N° de dossier : ${t.value.trim()||'retiré'}`)}
   else if(t.id==='d-damages'&&t.value!==(v.damages||'')){await patch(id,{damages:t.value},'Dégâts modifiés')}
   else if(t.id==='d-cause'){await patch(id,{delay:{...(v.delay||{}),on:true,cause:t.value}},`Retard : ${t.value}`);t.blur()}
   else if(t.id==='d-cnote'&&t.value!==((v.delay||{}).note||'')){await patch(id,{delay:{...(v.delay||{}),on:true,note:t.value.trim()}},`Retard : ${t.value.trim()}`)}
@@ -477,6 +494,7 @@ async function refreshPush(){
   renderTop();if(S.sheet&&S.sheet.mode==='settings')renderSheet();
 }
 async function enablePush(){
+  if(!meOK()){askName();return}
   if(!pushOK()){toast("Notifications impossibles ici. Sur iPhone : ajoutez d'abord l'appli à l'écran d'accueil.");return}
   const perm=await Notification.requestPermission();
   if(perm!=='granted'){S.push=perm==='denied'?'denied':'off';renderTop();toast('Notifications refusées. Autorisez-les dans les réglages de Chrome pour ce site.');return}

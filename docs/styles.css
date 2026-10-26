@@ -256,3 +256,17 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .tl-b time{font-size:12px;color:var(--ink-3)}
 .av{display:inline-grid;place-items:center;border-radius:50%;background:var(--ink);color:#fff;font-weight:700;flex:none;letter-spacing:0}
 .item .txt span b,.who-line b{display:inline;font-size:inherit}
+
+/* name picker */
+.picker{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;overflow:auto;
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.picker-card{width:min(640px,100%);display:flex;flex-direction:column;gap:18px;text-align:center}
+.picker-card h1{font-size:clamp(26px,4vw,34px)}
+.picker-card p{margin:0}
+.names{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.name-btn{display:flex;align-items:center;gap:12px;border:2px solid var(--line);background:var(--bg);border-radius:var(--r);padding:16px;text-align:left;min-height:76px}
+.name-btn:hover{border-color:var(--ink)}
+.name-btn .av{width:44px;height:44px;font-size:15px}
+.name-btn b{display:block;font-size:18px}
+.name-btn small{display:block;font-size:13px;color:var(--ink-2)}
+.ghost-btn{background:none;color:var(--ink-2);align-self:center}
