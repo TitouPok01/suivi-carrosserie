@@ -1,7 +1,7 @@
 // Service worker : rend l'appli installable et l'écran disponible même avec un réseau lent.
 // Les données (Supabase) ne sont jamais mises en cache ici : elles viennent toujours d'internet.
-const CACHE = 'carrosserie-v10';
-const SHELL = ['./', 'index.html', 'styles.css?v=10', 'app.js?v=10', 'config.js?v=10', 'vendor/supabase.js', 'manifest.webmanifest', 'icons/icon-192.png'];
+const CACHE = 'carrosserie-v11';
+const SHELL = ['./', 'index.html', 'styles.css?v=11', 'app.js?v=11', 'config.js?v=11', 'vendor/supabase.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).catch(() => {})); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

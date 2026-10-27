@@ -292,4 +292,7 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .qc-list{overflow-y:auto;min-height:0;flex:1 1 auto}
 .qc-foot{display:flex;flex-direction:column;gap:6px;flex:none}
 .big-go:disabled{background:var(--soft-2);color:var(--ink-3);cursor:not-allowed;filter:none}
-@media (prefers-reduced-motion:no-preference){.qc-pop{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,-46%)}}}
+@media (prefers-reduced-motion:no-preference){.qc-pop.anim{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,-46%)}}}
+
+.chk-row{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.chk-row:active{filter:brightness(.97)}

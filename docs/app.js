@@ -152,16 +152,25 @@ function openQC(id,then){S.qcPop={id,then:then||'lavage'};renderQC()}
 async function toggleQC(id,key){const v=byId(id);if(!v)return;if(!W()){askName();return}
   const qc={...(v.qc||{}),[key]:(v.qc||{})[key]?false:{by:signer(),t:Date.now()}};const all=QC.every(x=>qc[x[0]]);const lbl=(QC.find(x=>x[0]===key)||[])[1]||'';
   await patch(id,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet ✓':(qc[key]?'Contrôle : '+lbl+' ✓':'Contrôle : '+lbl+' décoché'))}
+function qcRowInner(qc,kk,l){return `<span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(qc[kk])}</span>`}
+function qcBtnTxt(n,then){const left=QC.length-n;return left?`Cochez les ${left} point${left>1?'s':''} restant${left>1?'s':''}`:`Valider et passer au ${st(then).l.toLowerCase()} ${IC.arrow}`}
 function renderQC(){const r=$('#qc-root');if(!r)return;const pop=S.qcPop;const v=pop&&byId(pop.id);
   if(!v||v.delivered){r.innerHTML='';S.qcPop=null;return}
-  const qc=v.qc||{};const n=QC.filter(x=>qc[x[0]]).length;const all=n===QC.length;const scroll=r.querySelector('.qc-list')?r.querySelector('.qc-list').scrollTop:0;
-  r.innerHTML=`<div class="qc-scrim" data-act="qcclose"></div><div class="qc-pop" role="dialog" aria-modal="true" style="${cvar('controle')}">
+  const qc=v.qc||{};const n=QC.filter(x=>qc[x[0]]).length;const all=n===QC.length;
+  const cur=r.querySelector('.qc-pop');
+  if(cur&&cur.dataset.id===pop.id){ // mise à jour sur place : pas de clignotement
+    QC.forEach(([kk,l])=>{const b=cur.querySelector(`[data-qcp="${kk}"]`);if(!b)return;const on=!!qc[kk];
+      if(b.classList.contains('on')!==on||b.dataset.sig!==JSON.stringify(qc[kk]||0)){b.classList.toggle('on',on);b.innerHTML=qcRowInner(qc,kk,l);b.dataset.sig=JSON.stringify(qc[kk]||0)}});
+    cur.querySelector('.qc-bar span').style.width=Math.round(n/QC.length*100)+'%';cur.querySelector('.qc-n').textContent=`${n} / ${QC.length} points vérifiés`;
+    const ok=cur.querySelector('[data-act="qcok"]');ok.disabled=!(all&&W());ok.innerHTML=qcBtnTxt(n,pop.then);return}
+  r.innerHTML=`<div class="qc-scrim" data-act="qcclose"></div><div class="qc-pop anim" data-id="${esc(pop.id)}" role="dialog" aria-modal="true" style="${cvar('controle')}">
     <div class="qc-h"><span class="dot">${IC.controle}</span><div class="t"><h2>Contrôle final</h2><p>${plate(v.plate)} <span>${esc(v.model||'')}</span></p></div><button class="close" data-act="qcclose" aria-label="Fermer">${IC.x}</button></div>
     <div class="qc-bar"><span style="width:${Math.round(n/QC.length*100)}%"></span></div><p class="qc-n">${n} / ${QC.length} points vérifiés</p>
-    <div class="checks qc-list">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qcp="${kk}" ${W()?'':'disabled'}><span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(qc[kk])}</span></button>`).join('')}</div>
-    <div class="qc-foot"><button class="big-go" style="${cvar(pop.then)}" data-act="qcok" ${all&&W()?'':'disabled'}>${all?`Valider et passer au ${st(pop.then).l.toLowerCase()} ${IC.arrow}`:`Cochez les ${QC.length-n} point${QC.length-n>1?'s':''} restant${QC.length-n>1?'s':''}`}</button>
+    <div class="checks qc-list">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qcp="${kk}" data-sig='${esc(JSON.stringify(qc[kk]||0))}' ${W()?'':'disabled'}>${qcRowInner(qc,kk,l)}</button>`).join('')}</div>
+    <div class="qc-foot"><button class="big-go" style="${cvar(pop.then)}" data-act="qcok" ${all&&W()?'':'disabled'}>${qcBtnTxt(n,pop.then)}</button>
     <button class="btn ghost-btn" data-act="qcclose">Plus tard</button></div></div>`;
-  const l=r.querySelector('.qc-list');if(l)l.scrollTop=scroll}
+  const p=r.querySelector('.qc-pop');setTimeout(()=>p&&p.classList.remove('anim'),300);
+}
 async function deliver(id){const v=byId(id);await patch(id,{delivered:true,deliveredAt:Date.now()},'Livrée au client');S.sheet=null;render();toast(`${v.plate} livrée 👍`)}
 async function addVehicle(f){
   if(!W())return;
@@ -283,6 +292,21 @@ function renderView(){
 function doneList(){const d=S.vehicles.filter(v=>v.delivered).sort((x,y)=>(y.deliveredAt||0)-(x.deliveredAt||0)).slice(0,15);
   return d.length?`<details class="done" style="margin-top:22px"><summary>Voitures livrées (${d.length})</summary><div class="items" style="padding:0 14px 14px">${d.map(v=>`<button class="row" data-open="${esc(v.id)}" style="background:var(--bg)">${plate(v.plate)}<span class="txt"><b>${esc(v.model)}</b><span>Livrée le ${v.deliveredAt?fmtTime(v.deliveredAt):''}</span></span></button>`).join('')}</div></details>`:''}
 
+/* met à jour un bloc existant à partir d'un nouveau rendu, sans tout reconstruire */
+function morph(a,b){
+  const ac=[...a.childNodes],bc=[...b.childNodes];
+  for(let i=0;i<Math.max(ac.length,bc.length);i++){const x=ac[i],y=bc[i];
+    if(!y){x.remove();continue}
+    if(!x){a.appendChild(y.cloneNode(true));continue}
+    if(x.nodeType!==y.nodeType||x.nodeName!==y.nodeName||(x.nodeType===1&&(x.tagName==='INPUT'||x.tagName==='TEXTAREA'||x.tagName==='SELECT'||x.tagName==='IMG')&&x.outerHTML!==y.outerHTML)){
+      if(x.nodeType===1&&(x.tagName==='IMG')&&x.getAttribute('src')!==y.getAttribute('src')&&y.getAttribute('src').startsWith('data:')){continue}
+      a.replaceChild(y.cloneNode(true),x);continue}
+    if(x.nodeType===3||x.nodeType===8){if(x.nodeValue!==y.nodeValue)x.nodeValue=y.nodeValue;continue}
+    for(const at of [...x.attributes])if(!y.hasAttribute(at.name))x.removeAttribute(at.name);
+    for(const at of [...y.attributes])if(x.getAttribute(at.name)!==at.value)x.setAttribute(at.name,at.value);
+    if(x.innerHTML!==y.innerHTML)morph(x,y);
+  }
+}
 function renderSheet(){
   const root=$('#sheet-root');const sh=S.sheet;
   if(!sh){root.innerHTML='';return}
@@ -294,7 +318,10 @@ function renderSheet(){
   else if(sh.mode==='settings')body=settingsForm();
   else if(sh.mode==='list')body=listSheet(sh.kind);
   else{const v=byId(sh.id);if(!v){S.sheet=null;root.innerHTML='';return}body=detail(v);if((sh.tab||'infos')==='msg')markSeen(v.id)}
-  root.innerHTML=`<div class="scrim" data-act="close"></div><aside class="sheet${sh.keep?'':' anim'}" role="dialog" aria-modal="true">${body}</aside>`;
+  const sig=sh.mode+'|'+(sh.id||sh.kind||'');
+  if(old&&sh.keep&&old.dataset.sig===sig){ // même fiche : on ne remplace que ce qui a changé (pas de clignotement)
+    const tmp=document.createElement('aside');tmp.innerHTML=body;morph(old,tmp);if(sh.toBottom)old.scrollTop=old.scrollHeight;sh.toBottom=false;return}
+  root.innerHTML=`<div class="scrim" data-act="close"></div><aside class="sheet${old?'':' anim'}" data-sig="${esc(sig)}" role="dialog" aria-modal="true">${body}</aside>`;
   const s=root.querySelector('.sheet');if(sh.keep)s.scrollTop=sh.toBottom?s.scrollHeight:scroll;sh.keep=true;sh.toBottom=false;
 }
 function closeBtn(){return `<button class="close" data-act="close" aria-label="Fermer">${IC.x}</button>`}
