@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 <div class="wrap">
@@ -28,8 +28,18 @@
 <div id="pick-root"></div>
 <div id="login-root"></div>
 <script src="vendor/supabase.js"></script>
-<script src="config.js"></script>
-<script src="app.js"></script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}</script>
+<script src="config.js?v=10"></script>
+<script src="app.js?v=10"></script>
+<script>
+if('serviceWorker' in navigator){
+  // nouvelle version en ligne -> la tablette recharge toute seule
+  let had=!!navigator.serviceWorker.controller,reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!reloaded){reloaded=true;location.reload()}had=true});
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>{
+    setInterval(()=>r.update().catch(()=>{}),15*60*1000);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)r.update().catch(()=>{})});
+  }).catch(()=>{}));
+}
+</script>
 </body>
 </html>
