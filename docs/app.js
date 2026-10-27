@@ -101,7 +101,7 @@ function fmtTime(t){return new Date(t).toLocaleString('fr-BE',{day:'2-digit',mon
 function dayTxt(iso){const d=daysTo(iso);return d===0?"Aujourd'hui":d===1?'Demain':d===-1?'Hier':fmtDate(iso)}
 function overdue(v){const d=daysTo(v.due);return sIdx(stageOf(v))<2&&d!==null&&d<0}
 function isLate(v){return !v.delivered&&((v.delay&&v.delay.on)||overdue(v))}
-function soonOut(v){const k=stageOf(v);return !v.delivered&&(k==='finition'||(k==='reparation'&&!!v.due&&daysTo(v.due)<=2))}
+function soonOut(v){return !v.delivered&&stageOf(v)==='finition'}
 function ago(t){const m=Math.round((Date.now()-t)/60000);if(m<1)return "à l'instant";if(m<60)return `il y a ${m} min`;const h=Math.round(m/60);if(h<24)return `il y a ${h} h`;return fmtTime(t)}
 const initials=n=>esc(String(n||'?').trim().split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?');
 const whoName=n=>n?esc(n):"Quelqu'un";
@@ -118,6 +118,8 @@ function dueLine(v,big){
 }
 function plate(p,big){return `<span class="plate${big?' big':''}"><span class="eu">B</span><span class="pt">${esc(p||'—')}</span></span>`}
 function normPlate(p){p=String(p||'').toUpperCase().replace(/[\s.]/g,'');const m=p.replace(/-/g,'').match(/^(\d)([A-Z]{3})(\d{3})$/);return m?`${m[1]}-${m[2]}-${m[3]}`:p}
+function toastUndo(msg,fn){const r=$('#toast-root');r.innerHTML=`<div class="toast undo" role="status"><span>${esc(msg)}</span><button type="button" id="undo-btn">Annuler</button></div>`;
+  const b=$('#undo-btn');b.onclick=async()=>{r.innerHTML='';clearTimeout(toast.t);await fn()};clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',6000)}
 function toast(msg){const r=$('#toast-root');r.innerHTML=`<div class="toast" role="status">${esc(msg)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',2600)}
 function dbErr(e){const c=e&&e.code;if(c==='quota_exceeded')return "Stockage plein : supprimez d'anciennes voitures livrées.";if(c==='invalid_argument')return "Vous n'avez pas le droit de modifier.";return 'Pas enregistré. Réessayez.'}
 function markSeen(id){S.seen[id]=Date.now();try{localStorage.setItem('atelier.seen',JSON.stringify(S.seen))}catch(e){}}
@@ -136,7 +138,8 @@ async function patch(id,data,ev){
 async function saveConfig(cfg){if(!online())return;cfg={...cfg,updatedBy:signer(),updatedAt:Date.now()};try{await q('config/main',()=>db.doc('config/main').set(cfg));toast('Enregistré')}catch(e){toast(dbErr(e))}}
 
 /* actions */
-async function moveStage(id,k){const v=byId(id);if(!v||stageOf(v)===k)return;await patch(id,{stage:k},`Étape : ${st(k).l}`);toast(`${v.plate} → ${st(k).l}`)}
+async function moveStage(id,k,undo){const v=byId(id);if(!v||stageOf(v)===k)return;const prev=stageOf(v);await patch(id,{stage:k},undo?`Annulé : retour à ${st(k).l}`:`Étape : ${st(k).l}`);
+  if(undo)toast(`${v.plate} remise en ${st(k).l}`);else toastUndo(`${v.plate} → ${st(k).l}`,()=>moveStage(id,prev,true))}
 async function deliver(id){const v=byId(id);await patch(id,{delivered:true,deliveredAt:Date.now()},'Livrée au client');S.sheet=null;render();toast(`${v.plate} livrée 👍`)}
 async function addVehicle(f){
   if(!W())return;
@@ -453,14 +456,29 @@ document.addEventListener('submit',async e=>{
 
 /* drag between steps (finger or mouse) */
 let drag=null;
+const HOLD=450; // touch: hold the card ~0.5 s before it can be moved, so scrolling never moves a car
 const colAt=(x,y)=>{const el=document.elementFromPoint(x,y);return el&&el.closest('[data-col]')};
-document.addEventListener('pointerdown',e=>{if(e.button>0)return;const c=e.target.closest('[data-drag]');if(!c||!W())return;drag={id:c.dataset.drag,el:c.closest('.card'),x0:e.clientX,y0:e.clientY,moved:false,ghost:null}});
-document.addEventListener('pointermove',e=>{if(!drag)return;if(!drag.moved&&Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)<8)return;drag.moved=true;e.preventDefault();
-  if(!drag.ghost){drag.ghost=drag.el.cloneNode(true);drag.ghost.classList.add('ghost');document.body.appendChild(drag.ghost);drag.el.classList.add('lift')}
-  drag.ghost.style.transform=`translate(${e.clientX-115}px,${e.clientY-35}px) rotate(-2deg)`;
-  document.querySelectorAll('.col.drop').forEach(x=>x.classList.remove('drop'));const c=colAt(e.clientX,e.clientY);if(c)c.classList.add('drop')},{passive:false});
-async function endDrag(e,cancel){if(!drag)return;const d=drag;drag=null;if(d.ghost)d.ghost.remove();d.el.classList.remove('lift');document.querySelectorAll('.col.drop').forEach(x=>x.classList.remove('drop'));
-  if(!d.moved||cancel)return;S.justDragged=Date.now();const c=colAt(e.clientX,e.clientY);if(c)await moveStage(d.id,c.dataset.col)}
+function startLift(e){if(!drag||drag.active)return;drag.active=true;
+  drag.ghost=drag.el.cloneNode(true);drag.ghost.classList.add('ghost');document.body.appendChild(drag.ghost);drag.el.classList.add('lift');
+  try{navigator.vibrate&&navigator.vibrate(25)}catch(_){}
+  moveGhost(drag.lx,drag.ly)}
+function moveGhost(x,y){if(!drag||!drag.ghost)return;drag.ghost.style.transform=`translate(${x-115}px,${y-35}px) rotate(-2deg) scale(1.03)`;
+  document.querySelectorAll('.col.drop').forEach(c=>c.classList.remove('drop'));const c=colAt(x,y);if(c)c.classList.add('drop')}
+document.addEventListener('pointerdown',e=>{if(e.button>0)return;const c=e.target.closest('[data-drag]');if(!c||!W())return;
+  drag={id:c.dataset.drag,el:c.closest('.card'),x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,touch:e.pointerType!=='mouse',active:false,ghost:null,timer:null};
+  if(drag.touch){drag.el.classList.add('press');drag.timer=setTimeout(()=>{if(drag){drag.el.classList.remove('press');startLift()}},HOLD)}});
+document.addEventListener('pointermove',e=>{if(!drag)return;drag.lx=e.clientX;drag.ly=e.clientY;const dist=Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0);
+  if(!drag.active){
+    if(drag.touch){if(dist>10)cancelDrag();return} // finger moved before the hold: it's a scroll
+    if(dist<12)return;startLift();
+  }
+  e.preventDefault();moveGhost(e.clientX,e.clientY)},{passive:false});
+// once a card is lifted, stop the page from scrolling under the finger
+document.addEventListener('touchmove',e=>{if(drag&&drag.active)e.preventDefault()},{passive:false});
+document.addEventListener('contextmenu',e=>{if(drag&&e.target.closest('[data-drag]'))e.preventDefault()});
+function cancelDrag(){if(!drag)return;clearTimeout(drag.timer);drag.el.classList.remove('press','lift');if(drag.ghost)drag.ghost.remove();document.querySelectorAll('.col.drop').forEach(x=>x.classList.remove('drop'));drag=null}
+async function endDrag(e,cancel){if(!drag)return;const d=drag;const was=d.active;cancelDrag();
+  if(!was||cancel)return;S.justDragged=Date.now();const c=colAt(e.clientX,e.clientY);if(c)await moveStage(d.id,c.dataset.col)}
 document.addEventListener('pointerup',e=>endDrag(e,false));
 document.addEventListener('pointercancel',e=>endDrag(e,true));
 

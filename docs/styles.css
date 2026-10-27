@@ -66,7 +66,7 @@ h1{margin:0;font-size:clamp(22px,3vw,28px);font-weight:700;letter-spacing:-.01em
 .col-empty{color:var(--ink-3);font-size:14px;text-align:center;padding:22px 8px}
 
 .card{background:var(--bg);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(20,22,26,.06),0 0 0 1px var(--line)}
-.card-open{all:unset;min-width:0;cursor:pointer;display:flex;flex-direction:column;gap:7px;padding:12px;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:14px 14px 0 0}
+.card-open{all:unset;min-width:0;cursor:pointer;display:flex;flex-direction:column;gap:7px;padding:12px;touch-action:manipulation;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;border-radius:14px 14px 0 0}
 .card-open:focus-visible{outline:3px solid var(--s2);outline-offset:-3px}
 .card .model{font-size:15px;font-weight:600;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
@@ -270,3 +270,9 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .name-btn b{display:block;font-size:18px}
 .name-btn small{display:block;font-size:13px;color:var(--ink-2)}
 .ghost-btn{background:none;color:var(--ink-2);align-self:center}
+
+/* drag feedback + undo */
+.card{transition:transform .15s ease,box-shadow .15s ease}
+.card.press{transform:scale(.97);box-shadow:0 0 0 2px var(--s2)}
+.toast.undo{display:flex;align-items:center;gap:14px;padding:10px 10px 10px 20px}
+.toast.undo button{border:0;background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:700;font-size:15px;min-height:40px}
