@@ -101,7 +101,7 @@ function fmtTime(t){return new Date(t).toLocaleString('fr-BE',{day:'2-digit',mon
 function dayTxt(iso){const d=daysTo(iso);return d===0?"Aujourd'hui":d===1?'Demain':d===-1?'Hier':fmtDate(iso)}
 function overdue(v){const d=daysTo(v.due);return sIdx(stageOf(v))<2&&d!==null&&d<0}
 function isLate(v){return !v.delivered&&((v.delay&&v.delay.on)||overdue(v))}
-function soonOut(v){return !v.delivered&&['finition','controle','lavage'].includes(stageOf(v))}
+function soonOut(v){return !v.delivered&&['finition','controle'].includes(stageOf(v))}
 function ago(t){const m=Math.round((Date.now()-t)/60000);if(m<1)return "à l'instant";if(m<60)return `il y a ${m} min`;const h=Math.round(m/60);if(h<24)return `il y a ${h} h`;return fmtTime(t)}
 const initials=n=>esc(String(n||'?').trim().split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||'?');
 const whoName=n=>n?esc(n):"Quelqu'un";
