@@ -138,8 +138,30 @@ async function patch(id,data,ev){
 async function saveConfig(cfg){if(!online())return;cfg={...cfg,updatedBy:signer(),updatedAt:Date.now()};try{await q('config/main',()=>db.doc('config/main').set(cfg));toast('Enregistré')}catch(e){toast(dbErr(e))}}
 
 /* actions */
-async function moveStage(id,k,undo){const v=byId(id);if(!v||stageOf(v)===k)return;const prev=stageOf(v);await patch(id,{stage:k},undo?`Annulé : retour à ${st(k).l}`:`Étape : ${st(k).l}`);
-  if(undo)toast(`${v.plate} remise en ${st(k).l}`);else toastUndo(`${v.plate} → ${st(k).l}`,()=>moveStage(id,prev,true))}
+const qcDone=v=>QC.every(x=>(v.qc||{})[x[0]]);
+async function moveStage(id,k,undo){const v=byId(id);if(!v||stageOf(v)===k)return;const prev=stageOf(v);
+  // Contrôle final obligatoire : impossible d'aller au lavage (ou plus loin) sans les 11 points cochés
+  if(!undo&&sIdx(k)>sIdx('controle')&&!qcDone(v)){
+    if(prev!=='controle')await patch(id,{stage:'controle'},`Étape : ${st('controle').l}`);
+    openQC(id,k);toast('Contrôle final à valider d\'abord');return}
+  await patch(id,{stage:k},undo?`Annulé : retour à ${st(k).l}`:`Étape : ${st(k).l}`);
+  if(undo){toast(`${v.plate} remise en ${st(k).l}`);return}
+  if(k==='controle'&&!qcDone(byId(id)||v)){openQC(id,'lavage');return}
+  toastUndo(`${v.plate} → ${st(k).l}`,()=>moveStage(id,prev,true))}
+function openQC(id,then){S.qcPop={id,then:then||'lavage'};renderQC()}
+async function toggleQC(id,key){const v=byId(id);if(!v)return;if(!W()){askName();return}
+  const qc={...(v.qc||{}),[key]:(v.qc||{})[key]?false:{by:signer(),t:Date.now()}};const all=QC.every(x=>qc[x[0]]);const lbl=(QC.find(x=>x[0]===key)||[])[1]||'';
+  await patch(id,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet ✓':(qc[key]?'Contrôle : '+lbl+' ✓':'Contrôle : '+lbl+' décoché'))}
+function renderQC(){const r=$('#qc-root');if(!r)return;const pop=S.qcPop;const v=pop&&byId(pop.id);
+  if(!v||v.delivered){r.innerHTML='';S.qcPop=null;return}
+  const qc=v.qc||{};const n=QC.filter(x=>qc[x[0]]).length;const all=n===QC.length;const scroll=r.querySelector('.qc-list')?r.querySelector('.qc-list').scrollTop:0;
+  r.innerHTML=`<div class="qc-scrim" data-act="qcclose"></div><div class="qc-pop" role="dialog" aria-modal="true" style="${cvar('controle')}">
+    <div class="qc-h"><span class="dot">${IC.controle}</span><div class="t"><h2>Contrôle final</h2><p>${plate(v.plate)} <span>${esc(v.model||'')}</span></p></div><button class="close" data-act="qcclose" aria-label="Fermer">${IC.x}</button></div>
+    <div class="qc-bar"><span style="width:${Math.round(n/QC.length*100)}%"></span></div><p class="qc-n">${n} / ${QC.length} points vérifiés</p>
+    <div class="checks qc-list">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qcp="${kk}" ${W()?'':'disabled'}><span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(qc[kk])}</span></button>`).join('')}</div>
+    <div class="qc-foot"><button class="big-go" style="${cvar(pop.then)}" data-act="qcok" ${all&&W()?'':'disabled'}>${all?`Valider et passer au ${st(pop.then).l.toLowerCase()} ${IC.arrow}`:`Cochez les ${QC.length-n} point${QC.length-n>1?'s':''} restant${QC.length-n>1?'s':''}`}</button>
+    <button class="btn ghost-btn" data-act="qcclose">Plus tard</button></div></div>`;
+  const l=r.querySelector('.qc-list');if(l)l.scrollTop=scroll}
 async function deliver(id){const v=byId(id);await patch(id,{delivered:true,deliveredAt:Date.now()},'Livrée au client');S.sheet=null;render();toast(`${v.plate} livrée 👍`)}
 async function addVehicle(f){
   if(!W())return;
@@ -205,7 +227,7 @@ async function clearExamples(){for(const v of S.vehicles.filter(v=>v.example)){
   try{await db.doc('vehicles/'+v.id).delete()}catch(e){}}toast('Exemples supprimés')}
 
 /* render */
-function render(){$('#atelier-name').textContent=S.config.name||'Atelier carrosserie';renderPicker();renderTop();renderNote();renderAlerts();renderView();renderSheet();renderLb()}
+function render(){$('#atelier-name').textContent=S.config.name||'Atelier carrosserie';renderPicker();renderQC();renderTop();renderNote();renderAlerts();renderView();renderSheet();renderLb()}
 function renderTop(){
   const sf=S.config.staff;
   $('#top-r').innerHTML=`${sf.length?`<label class="who${S.me?'':' need'}">Je suis<select id="me-sel"><option value="">Choisir</option>${sf.map(p=>`<option value="${esc(p.name)}" ${p.name===S.me?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`:''}
@@ -316,6 +338,7 @@ function detail(v){
   else if(tab==='ctrl'){const qc=v.qc||{};const wa=v.wash||{};const qn=QC.filter(x=>qc[x[0]]).length;const wn=WASH.filter(x=>wa[x[0]]).length;
     pane=`<p class="lbl">Contrôle final · ${qn}/${QC.length}</p><div class="checks">${QC.map(([kk,l])=>`<button class="chk-row ${qc[kk]?'on':''}" data-qc="${kk}" ${dis}><span class="box-ck ${qc[kk]?'on':''}">${qc[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(qc[kk])}</span></button>`).join('')}</div>
     ${w&&k==='controle'&&qn===QC.length?`<button class="big-go" style="${cvar('lavage')}" data-stagego="lavage">Contrôle OK → Lavage ${IC.arrow}</button>`:''}
+    ${w&&k==='controle'&&qn<QC.length?`<button class="btn" data-act="qcopen" style="align-self:flex-start">Ouvrir le contrôle en grand</button>`:''}
     <p class="lbl">Lavage · ${wn}/${WASH.length}</p><div class="checks">${WASH.map(([kk,l])=>`<button class="chk-row ${wa[kk]?'on':''}" data-wash="${kk}" ${dis}><span class="box-ck ${wa[kk]?'on':''}">${wa[kk]?IC.check:''}</span><span class="ck-l">${esc(l)}${ckWho(wa[kk])}</span></button>`).join('')}</div>
     ${w&&k==='lavage'&&wn===WASH.length?`<button class="big-go" style="${cvar('pret')}" data-stagego="pret">Lavage fait → Prête ${IC.arrow}</button>`:''}`;}
   else if(tab==='hist'){const hist=[...(v.history||[])].reverse();
@@ -381,12 +404,13 @@ function renderLb(){const r=$('#lb-root');const p=S.lb&&S.photos.find(x=>x.id===
 /* events */
 document.addEventListener('click',async e=>{
   if(Date.now()-S.justDragged<350){e.preventDefault();return}
-  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-delay],[data-pickme],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
+  const t=e.target.closest('[data-act],[data-open],[data-next],[data-deliver],[data-restore],[data-stage],[data-stagego],[data-task],[data-qc],[data-wash],[data-kind],[data-forr],[data-tab],[data-list],[data-delay],[data-pickme],[data-qcp],[data-lb],[data-delphoto],[data-del],[data-delstaff]');
   if(!t)return;const d=t.dataset;const sid=S.sheet&&S.sheet.mode==='detail'&&S.sheet.id;
   if(d.kind){S.kind=d.kind;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(d.forr){S.forR=d.forr;t.parentNode.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b===t));return}
   if(d.tab&&S.sheet){S.sheet.tab=d.tab;S.sheet.keep=false;S.confirmDel=false;if(d.tab==='msg'){S.sheet.toBottom=true;S.sheet.keep=true}renderSheet();renderView();return}
   if(d.pickme){S.me=d.pickme;S.viewOnly=false;try{localStorage.setItem('atelier.me',S.me)}catch(_){}render();refreshPush();toast(`Bonjour ${S.me} 👋`);return}
+  if(d.qcp&&S.qcPop){await toggleQC(S.qcPop.id,d.qcp);return}
   if(d.list){S.sheet={mode:'list',kind:d.list};render();return}
   if(d.task){await toggleTask(d.task);return}
   if(d.next!==undefined){const v=byId(d.next);const nx=STAGES[sIdx(stageOf(v))+1];if(nx)await moveStage(v.id,nx.k);return}
@@ -394,7 +418,7 @@ document.addEventListener('click',async e=>{
   if(d.restore!==undefined){await patch(d.restore,{delivered:false},'Remise en cours');return}
   if(d.stage&&sid){await moveStage(sid,d.stage);return}
   if(d.stagego&&sid){await moveStage(sid,d.stagego);return}
-  if(d.qc&&sid){const v=byId(sid);const qc={...(v.qc||{}),[d.qc]:(v.qc||{})[d.qc]?false:{by:signer(),t:Date.now()}};const all=QC.every(x=>qc[x[0]]);const lbl=(QC.find(x=>x[0]===d.qc)||[])[1]||'';await patch(sid,{qc,...(all?{qcBy:signer(),qcAt:Date.now()}:{})},all?'Contrôle final complet ✓':(qc[d.qc]?'Contrôle : '+lbl+' ✓':'Contrôle : '+lbl+' décoché'));return}
+  if(d.qc&&sid){await toggleQC(sid,d.qc);return}
   if(d.wash&&sid){const v=byId(sid);const wash={...(v.wash||{}),[d.wash]:(v.wash||{})[d.wash]?false:{by:signer(),t:Date.now()}};const wl=(WASH.find(x=>x[0]===d.wash)||[])[1]||'';await patch(sid,{wash},WASH.every(x=>wash[x[0]])?'Lavage terminé ✓':(wash[d.wash]?'Lavage : '+wl+' ✓':'Lavage : '+wl+' décoché'));return}
   if(d.delay&&sid){const v=byId(sid);const dl=v.delay||{};const orig=dl.origDue||v.due||todayISO();const n=+d.delay;const nd=addDays(orig,n);
     await patch(sid,{due:nd,delay:{...dl,on:true,days:n,origDue:orig}},`Retard de ${dlTxt(n)} : finie pour le ${fmtDate(nd)}`);toast(`Retard de ${dlTxt(n)} enregistré`);return}
@@ -409,6 +433,9 @@ document.addEventListener('click',async e=>{
     case 'settings':S.sheet={mode:'settings',draft:structuredClone(S.config)};render();break;
     case 'examples':await loadExamples();break;
     case 'install':await installApp();break;
+    case 'qcopen':{const id=S.sheet&&S.sheet.id;if(id)openQC(id,'lavage');break}
+    case 'qcclose':S.qcPop=null;renderQC();break;
+    case 'qcok':{const p=S.qcPop;if(!p)break;S.qcPop=null;renderQC();await moveStage(p.id,p.then);break}
     case 'pick':S.viewOnly=false;S.me='';render();break;
     case 'viewonly':S.viewOnly=true;render();break;
     case 'push-on':await enablePush();break;
@@ -427,6 +454,7 @@ function syncDraft(){const c=S.sheet&&S.sheet.draft;if(!c)return;const n=$('#s-n
   document.querySelectorAll('[data-staffname]').forEach(i=>{c.staff[+i.dataset.staffname].name=i.value});
   document.querySelectorAll('[data-staffrole]').forEach(i=>{c.staff[+i.dataset.staffrole].role=i.value})}
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&S.qcPop){S.qcPop=null;renderQC();return}
   if(e.key==='Escape'){if(S.lb){S.lb=null;render()}else if(S.sheet){S.sheet=null;render()}}
   if(e.key==='Enter'&&e.target.id==='s-newstaff'){e.preventDefault();document.querySelector('[data-act="addstaff"]').click()}
   if(e.key==='Enter'&&!e.shiftKey&&e.target.id==='m-text'){e.preventDefault();e.target.form.requestSubmit()}

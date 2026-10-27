@@ -276,3 +276,20 @@ details.hist summary{cursor:pointer;color:var(--ink-2);font-weight:600;font-size
 .card.press{transform:scale(.97);box-shadow:0 0 0 2px var(--s2)}
 .toast.undo{display:flex;align-items:center;gap:14px;padding:10px 10px 10px 20px}
 .toast.undo button{border:0;background:#fff;color:var(--ink);border-radius:999px;padding:8px 16px;font-weight:700;font-size:15px;min-height:40px}
+
+/* final check popup */
+.qc-scrim{position:fixed;inset:0;background:rgba(20,22,26,.45);z-index:45}
+.qc-pop{position:fixed;z-index:46;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 24px));max-height:calc(100% - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  background:var(--bg);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:12px;padding:20px}
+.qc-h{display:flex;align-items:center;gap:12px}
+.qc-h .t{flex:1;min-width:0}
+.qc-h h2{margin:0;font-size:22px}
+.qc-h p{margin:4px 0 0;display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:14px;flex-wrap:wrap}
+.qc-h .dot{width:44px;height:44px}
+.qc-bar{height:8px;border-radius:999px;background:var(--soft-2);overflow:hidden;flex:none}
+.qc-bar span{display:block;height:100%;background:var(--s6);border-radius:999px;transition:width .2s}
+.qc-n{margin:0;font-size:14px;font-weight:600;color:var(--ink-2)}
+.qc-list{overflow-y:auto;min-height:0;flex:1 1 auto}
+.qc-foot{display:flex;flex-direction:column;gap:6px;flex:none}
+.big-go:disabled{background:var(--soft-2);color:var(--ink-3);cursor:not-allowed;filter:none}
+@media (prefers-reduced-motion:no-preference){.qc-pop{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translate(-50%,-46%)}}}
