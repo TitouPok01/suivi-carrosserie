@@ -185,10 +185,10 @@ async function deleteVehicle(id){
   try{await db.doc('vehicles/'+id).delete();S.sheet=null;render();toast('Voiture supprimée')}catch(e){toast(dbErr(e))}
 }
 async function shrink(file){
-  try{const bmp=await createImageBitmap(file);const s=Math.min(1,1800/Math.max(bmp.width,bmp.height));
+  try{const bmp=await createImageBitmap(file);const s=Math.min(1,1280/Math.max(bmp.width,bmp.height));
     const c=document.createElement('canvas');c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);
     c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
-    const b=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error('blob')),'image/jpeg',.82));return {blob:b,type:'image/jpeg'}}
+    const b=await new Promise((res,rej)=>c.toBlob(x=>x?res(x):rej(new Error('blob')),'image/jpeg',.78));return {blob:b,type:'image/jpeg'}}
   catch(e){const ok=['image/png','image/jpeg','image/webp','image/gif'];return {blob:file,type:ok.includes(file.type)?file.type:'image/jpeg'}}
 }
 async function uploadPhotos(id,files){
@@ -346,7 +346,7 @@ function detail(v){
   else{pane=`${assets&&w?`<div class="photo-btns"><label class="btn go upl">${IC.cam}Photo<input type="file" accept="image/*" capture="environment" data-upload="${esc(v.id)}"></label>
       <label class="btn upl">${IC.img}Galerie<input type="file" accept="image/*" multiple data-upload="${esc(v.id)}"></label></div>`:''}
     ${S.uploading?`<p class="muted" style="margin:0">Envoi de ${S.uploading} photo${S.uploading>1?'s':''}…</p>`:''}
-    ${ph.length?`<div class="photos">${ph.slice().reverse().map(p=>`<button class="ph" data-lb="${esc(p.id)}"><img src="${photoUrl(p.asset)}" alt="" loading="lazy"><span>${esc(st(OLD[p.stage]||p.stage||'pcl').l)}${p.by?' · '+esc(p.by):''}</span></button>`).join('')}</div>`:`<p class="muted" style="margin:0">Pas encore de photo.</p>`}`;}
+    ${ph.length?`<div class="photos">${ph.slice().reverse().map(p=>`<button class="ph" data-lb="${esc(p.id)}"><img src="${photoUrl(p.asset)}" alt="" loading="lazy"><span>${esc(st(OLD[p.stage]||p.stage||'pcl').l)}${p.by?' · '+esc(p.by):''}</span></button>`).join('')}</div>`:(v.photosPurged?`<p class="muted" style="margin:0">Photos supprimées automatiquement le ${fmtTime(v.photosPurged)} (voiture livrée depuis plus de 3 mois).</p>`:`<p class="muted" style="margin:0">Pas encore de photo.</p>`)}`;}
   return head+`<div class="pane">${pane}</div>`;
 }
 function choices(){return `<div class="choice">${[['piece','Pièce à commander'],['action','Chose à faire']].map(([k,l])=>`<button type="button" data-kind="${k}" aria-pressed="${S.kind===k}">${l}</button>`).join('')}</div>
@@ -553,6 +553,21 @@ async function disablePush(){try{const sub=await currentSub();if(sub){await sb.f
 function openFromLink(url){const m=String(url||location.hash).match(/#v=([0-9a-f-]{36})/);if(m&&byId(m[1])){S.sheet={mode:'detail',id:m[1],tab:unread(m[1])?'msg':openTasks(m[1]).length?'urg':'infos'};render();history.replaceState(null,'',location.pathname)}}
 if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',e=>{if(e.data&&e.data.open)openFromLink(e.data.open)});
 
+/* ---------- nettoyage automatique : photos des voitures livrées depuis plus de 3 mois ---------- */
+const KEEP_DAYS=90;
+async function purgeOldPhotos(){
+  try{const last=+localStorage.getItem('atelier.purge')||0;if(Date.now()-last<864e5)return;localStorage.setItem('atelier.purge',String(Date.now()))}catch(e){}
+  const limit=Date.now()-KEEP_DAYS*864e5;
+  const old=S.vehicles.filter(v=>v.delivered&&v.deliveredAt&&v.deliveredAt<limit&&photosOf(v.id).length);
+  for(const v of old){const ph=photosOf(v.id);
+    try{await sb.storage.from(BUCKET).remove(ph.map(p=>p.asset));
+      for(const p of ph){await sb.from('photos').delete().eq('id',p.id);applyLocal('photos',p.id,null,true)}
+      const h=(v.history||[]).slice(-49);h.push({t:Date.now(),by:'',txt:`${ph.length} photo${ph.length>1?'s':''} supprimée${ph.length>1?'s':''} automatiquement (livrée depuis plus de 3 mois)`});
+      const data={...rawOf('vehicles',v.id),photosPurged:Date.now(),history:h};applyLocal('vehicles',v.id,data);
+      await sb.from('vehicles').update({data,updated_at:now()}).eq('id',v.id)}catch(e){}}
+  if(old.length)live();
+}
+
 /* login (one shared workshop account) */
 function showLogin(msg){
   $('#login-root').innerHTML=`<div class="login"><form class="login-card" id="login-form">
@@ -578,6 +593,7 @@ async function start(){
   try{await loadAll()}catch(e){S.offline=true;render()}
   subscribe();
   openFromLink();
+  setTimeout(purgeOldPhotos,5000);
   refreshPush();
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.ready!==undefined)sb.auth.getSession().then(({data})=>{if(data.session)loadAll().catch(()=>{S.offline=true;render()})})});
